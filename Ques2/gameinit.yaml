@@ -1,0 +1,42 @@
+- name: Create 2048 internet video game
+  hosts: localhost
+  become: false
+  vars:
+    namespace: opengame
+  module_defaults:
+    group/k8s:
+      namespace: "{{ namespace }}"
+      ca_cert: "/etc/pki/tls/certs/ca-bundle.crt"
+  tasks:
+   - name: Create the project
+     k8s:
+       api_version: project.openshift.io/v1
+       kind: Project
+       name: "{{ namespace }}"
+       state: present
+       namespace: ""
+   - name: Create Service account
+     k8s:
+       state: present
+       src: "{{playbook_dir + '/2048-serviceaccount.yaml'}}"
+   - name: Create RBAC
+     k8s:
+       state: present
+       src: "{{ playbook_dir + '/2048-rbac.yaml' }}"
+   - name: Creating Deployment
+     k8s:
+       state: present
+       src: "{{playbook_dir + '/2048-deploy'}}"
+   - name: Create service
+     k8s:
+       state: present
+       src: "{{playbook_dir + '/2048-svc.yaml'}}"
+   - name: Create Route
+     k8s:
+       state: present
+       src: "{{playbook_dir + '/2048-route.yaml'}}"
+   - name: Get info about all PODs in the namespace
+     k8s:
+       kind: Pod
+       name
+        

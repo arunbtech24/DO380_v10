@@ -1,0 +1,14 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: app2048-route
+  labels:
+    app: app2048
+spec:
+  to:
+    kind: Service
+    name: app2048-service
+  port:
+    targetPort: 80
+  wildcardPolicy: None
+

@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app2048-deploy
+  labels:
+    app: app2048
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app2048
+  template:
+    metadata:
+      labels:
+        app: app2048
+    spec:
+      containers:
+        - name: app2048
+          image: docker.io/httpd:latest  # Using official Apache HTTPD image
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
