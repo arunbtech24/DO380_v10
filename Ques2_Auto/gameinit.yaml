@@ -26,17 +26,36 @@
    - name: Creating Deployment
      k8s:
        state: present
-       src: "{{playbook_dir + '/2048-deploy'}}"
+       src: "{{playbook_dir + '/2048-deploy.yaml'}}"
    - name: Create service
      k8s:
        state: present
-       src: "{{playbook_dir + '/2048-svc.yaml'}}"
+       src: "{{playbook_dir + '/2048-service.yaml'}}"
    - name: Create Route
      k8s:
        state: present
        src: "{{playbook_dir + '/2048-route.yaml'}}"
    - name: Get info about all PODs in the namespace
-     k8s:
+     k8s_info:
        kind: Pod
-       name
-        
+   - name: Scale-Up Deployment
+     k8s_scale:
+       kind: Deployment
+       name: 'app2048-deploy'
+       replicas: 1
+   - name: get route hostname
+     k8s_info:
+       kind: route
+       name: app2048-route
+     register: route
+   - name: Test route Reachability
+     uri:
+       uri: "http://{{ route.resources[0].spec.host }}"
+       return_content: yes
+     register: response
+     until: response.status == 20
+     retries: 10
+     delay: 5
+   - name: Display the App response
+     debug:
+       var: response.content

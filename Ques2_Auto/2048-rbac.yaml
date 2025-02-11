@@ -4,7 +4,7 @@ metadata:
   name: rolebinding-svc-opengame
 subjects:
   - kind: ServiceAccount
-    name: svc_opengame  # The ServiceAccount to bind
+    name: svc-opengame  # The ServiceAccount to bind
 roleRef:
   kind: Role
   name: view  # Using OpenShift's built-in "view" role

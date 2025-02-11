@@ -14,9 +14,10 @@ spec:
       labels:
         app: app2048
     spec:
+      serviceAccountName: svc-opengame
       containers:
         - name: app2048
-          image: docker.io/httpd:latest  # Using official Apache HTTPD image
+          image: docker.io/httpd:latest
           ports:
             - containerPort: 80
           resources:
