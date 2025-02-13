@@ -1,0 +1,18 @@
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  labels:
+    machineconfiguration.openshift.io/role: worker
+  name: 77-worker-chrony
+spec:
+  config:
+    ignition:
+      version: 3.2.0
+    storage:
+      files:
+      - contents:
+          source: IyBUaGUgTWFjaGluZSBDb25maWcgT3BlcmF0b3IgbWFuYWdlcyB0aGlzIGZpbGUuCnNlcnZlciBjbGFzc3Jvb20uZXhhbXBsZS5jb20gaWJ1cnN0IAoKc3RyYXR1bXdlaWdodCAwCmRyaWZ0ZmlsZSAvdmFyL2xpYi9jaHJvbnkvZHJpZnQKcnRjc3luYwptYWtlc3RlcCAxMCAzCmJpbmRjbWRhZGRyZXNzIDEyNy4wLjAuMQpiaW5kY21kYWRkcmVzcyA6OjEKa2V5ZmlsZSAvZXRjL2Nocm9ueS5rZXlzCmNvbW1hbmRrZXkgMQpnZW5lcmF0ZWNvbW1hbmRrZXkKbm9jbGllbnRsb2cKbG9nY2hhbmdlIDAuNQpsb2dkaXIgL3Zhci9sb2cvY2hyb255Cg==
+          mode: 0644
+        filesystem: root    
+        overwrite: true
+        path: /etc/chrony.conf
