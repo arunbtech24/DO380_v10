@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+  namespace: ques4
+spec:
+  replicas: 1
+  selector:
+    matchLabels:                # FIXED: `matchLabels` is required in `selector`
+      deployment: nginx
+  template:
+    metadata:
+      labels:
+        deployment: nginx
+    spec:                        # FIXED: `spec` was incorrectly indented
+      containers:
+        - name: nginx
+          image: quay.io/magiver_fox31/nginx
+          ports:
+            - containerPort: 80   # FIXED: `containerPort` should be an integer, no `port` key
+              protocol: TCP
+
