@@ -67,4 +67,4 @@
      #
    - name: Display the App response
      debug:
-       var: respoe
+       var: response
