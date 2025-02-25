@@ -17,7 +17,7 @@ spec:
       serviceAccountName: svc-opengame
       containers:
         - name: app2048
-          image: docker.io/httpd:latest
+          image: quay.io/redhattraining/hello-world-nginx
           ports:
             - containerPort: 80
           resources:

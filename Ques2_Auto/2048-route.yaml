@@ -9,6 +9,6 @@ spec:
     kind: Service
     name: app2048-service
   port:
-    targetPort: 80
+    targetPort: 8080
   wildcardPolicy: None
 

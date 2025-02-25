@@ -45,17 +45,26 @@
        replicas: 1
    - name: get route hostname
      k8s_info:
+       api_version: route.openshift.io/v1      
        kind: route
        name: app2048-route
+       namespace: opengame
      register: route
+     #   
+   - name: Ensure route exists before accessing it
+     fail:
+       msg: "No route found!"
+     when: route.resources | length == 0
+     #
    - name: Test route Reachability
      uri:
-       uri: "http://{{ route.resources[0].spec.host }}"
+       url: "http://{{ route.resources[0].spec.host }}"
        return_content: yes
      register: response
-     until: response.status == 20
+     until: response.status == 200
      retries: 10
      delay: 5
+     #
    - name: Display the App response
      debug:
-       var: response.content
+       var: respoe
