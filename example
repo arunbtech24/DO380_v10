@@ -1,0 +1,27 @@
+1. Configure LDAP identity provider
+Configure authentication using LDAP.
+Note (not for exam): ‘lab auth-ldap start’ run this lab setup command on workstation for initial setup
+ Create a ldap-secret that contains the LDAP bind password Redhat123@! in the
+bindPassword key.
+ Create a ca-config-map that contains the IdM certificate in the ca.crt key. The
+IdM certificate is at http://idm.ocp4.example.com/ipa/config/ca.crt
+ You can use the ~/DO380/labs/auth-ldap/ldap-cr.yml file as a template to add
+an LDAP identity provider to the OpenShift.
+Configure the LDAP identity provider to:
+• Identity Provider to be named as ldapidp
+• Bind to the LDAP identity provider as admin user
+• Use ldaps://idm.ocp4.example.com as the LDAP URL.
+• Use the id LDAP attribute as the dn.
+• Use the email LDAP attribute as the mail.
+• Use the name LDAP attribute as the cn.
+• Use the preferred user name LDAP attribute as the uid.
+• bindDN: uid=admin,cn=users,cn=accounts,dc=ocp4,dc=example,dc=com
+• Verify that you can log in as the ‘openshift-user’ with the ‘openshift-user’
+password ‘.
+[note: In exam you will be provided with some real-time names viz Edwin]
+• Provide cluster admin role for ‘openshift-user’ user so that following api
+call works
+curl -sk --header "Authorization: Bearer $TOKEN" -X GET
+https://api.ocp4.example.com:6443/api/v1/pods/ | jq ".items[].metadata.name"
+
+Solution:
