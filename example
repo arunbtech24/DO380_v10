@@ -24,4 +24,138 @@ call works
 curl -sk --header "Authorization: Bearer $TOKEN" -X GET
 https://api.ocp4.example.com:6443/api/v1/pods/ | jq ".items[].metadata.name"
 
-Solution:
+Solution:  lab start auth-
+
+[student@workstation sync]$ oc create sa rhds-group-syncer
+serviceaccount/rhds-group-syncer created
+[student@workstation sync]$ oc create clusterrole rhds-group-syncer --verb get,list,create,update --resource groups
+clusterrole.rbac.authorization.k8s.io/rhds-group-syncer created
+[student@workstation sync]$ oc adm policy add-cluster-role-to-user rhds-group-syncer -z rhds-group-syncer
+clusterrole.rbac.authorization.k8s.io/rhds-group-syncer added: "rhds-group-syncer"
+[student@workstation sync]$
+
+student@workstation sync]$ oc create secret generic rhds-secret --from-literal bindPassword='redhatocp'
+secret/rhds-secret created
+[student@workstation sync]$ cat rhds
+rhds-cluster-role-binding.yaml  rhds-cluster-role.yaml          rhds-groups-cronjob.yaml        rhds-sync.yaml                  rhds_ca.crt                     
+[student@workstation sync]$ vi rhds-sync.yaml 
+[student@workstation sync]$ cat rhds-sync.yaml 
+kind: LDAPSyncConfig
+apiVersion: v1
+url: ldaps://rhds.ocp4.example.com:636
+bindDN: 'cn=Directory manager'
+bindPassword:
+  file: /etc/secrets/bindPassword
+ca: /etc/config/ca.crt
+augmentedActiveDirectory:
+    groupsQuery:
+        baseDN: "ou=people,dc=example,dc=com"
+        scope: sub
+        derefAliases: never
+        pageSize: 0
+    groupUIDAttribute: dn
+    groupNameAttributes: [ cn ]
+    usersQuery:
+        baseDN: "ou=people,dc=example,dc=com"
+        scope: sub
+        derefAliases: never
+        filter: (objectclass=account)
+        pageSize: 0
+    userNameAttributes: [ uid ]
+    groupMembershipAttributes: [ memberOf ]
+[student@workstation sync]$
+
+[student@workstation sync]$ oc create configmap rhds-config --from-file rhds-sync.yaml=rhds-sync.yaml,ca.crt=rhds_ca.crt 
+configmap/rhds-config created
+[student@workstation sync]$
+
+rhds-cluster-role-binding.yaml  rhds-cluster-role.yaml  rhds-groups-cronjob.yaml  rhds-sync.yaml  rhds_ca.crt
+[student@workstation sync]$ vi rhds-groups-cronjob.yaml 
+[student@workstation sync]$ 
+[student@workstation sync]$ 
+[student@workstation sync]$ 
+[student@workstation sync]$ 
+[student@workstation sync]$ oc create -f rhds-groups-cronjob.yaml 
+cronjob.batch/rhds-group-sync created
+[student@workstation sync]$ cat rhds-groups-cronjob.yaml 
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: rhds-group-sync
+  namespace: auth-rhds-sync
+spec:
+  schedule: "*/1 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: ldap-group-sync
+              image: "registry.ocp4.example.com:8443/openshift4/ose-cli:v4.12"
+              command:
+                - "/bin/sh"
+                - "-c"
+                - "oc adm groups sync --sync-config=/etc/config/rhds-sync.yaml --confirm"
+              volumeMounts:
+                - mountPath: "/etc/config"
+                  name: "ldap-sync-volume"
+                - mountPath: "/etc/secrets"
+                  name: "ldap-bind-password"
+          volumes:
+            - name: "ldap-sync-volume"
+              configMap:
+                name: "rhds-config"
+            - name: "ldap-bind-password"
+              secret:
+                secretName: rhds-secret
+          serviceAccountName: rhds-group-syncer
+          serviceAccount: rhds-group-syncer
+[student@workstation sync]$
+
+
+[student@workstation sync]$ oc get groups.user.openshift.io 
+NAME                USERS
+Default SMB Group   
+admins              admin
+developer           
+editors             
+ocpadmins           admin
+ocpdevs             developer
+[student@workstation sync]$ oc get pod
+No resources found in auth-rhds-sync namespace.
+[student@workstation sync]$ oc get pod
+NAME                             READY   STATUS              RESTARTS   AGE
+rhds-group-sync-29084127-kkzzl   0/1     ContainerCreating   0          1s
+[student@workstation sync]
+
+[student@workstation sync]$ oc get pod
+NAME                             READY   STATUS      RESTARTS   AGE
+rhds-group-sync-29084127-kkzzl   0/1     Completed   0          32s
+[student@workstation sync]$ oc get groups.user.openshift.io 
+NAME                USERS
+Default SMB Group   
+administrators      kristendelgado
+admins              admin
+developer           
+editors             
+ocpadmins           admin
+ocpdevs             developer
+[student@workstation sync]$
+
+[student@workstation sync]$ oc adm policy add-cluster-role-to-group cluster-admin administrators
+clusterrole.rbac.authorization.k8s.io/cluster-admin added: "administrators"
+[student@workstation sync]$ oc login -u kristendelgado -p redhat123
+Login successful.
+
+You have access to 72 projects, the list has been suppressed. You can list all projects with 'oc projects'
+
+Using project "auth-rhds-sync".
+[student@workstation sync]$ oc auth can-i create users -A
+yes
+[student@workstation sync]$ cd 
+[student@workstation ~]$ lab finish auth-sync
+SUCCESS Verifying cluster state
+
+
+
