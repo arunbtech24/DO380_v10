@@ -1,0 +1,1000 @@
+student@workstation gitops-review]$ 
+[student@workstation gitops-review]$ 
+[student@workstation gitops-review]$ oc create configmap cluster-root-ca-bundle
+configmap/cluster-root-ca-bundle created
+[student@workstation gitops-review]$ oc label configmaps cluster-root-ca-bundle config.openshift.io/inject-trusted-cabundle=true
+configmap/cluster-root-ca-bundle labeled
+[student@workstation gitops-review]$ vi argocd-instance.yaml 
+[student@workstation gitops-review]$ 
+[student@workstation gitops-review]$ 
+student@workstation gitops-review]$ cat argocd-instance.yaml 
+apiVersion: argoproj.io/v1beta1
+kind: ArgoCD
+metadata:
+  name: argocd
+  namespace: gitops-review
+spec:
+  server:
+    resources:
+      limits:
+        cpu: 500m
+        memory: 256Mi
+      requests:
+        cpu: 125m
+        memory: 128Mi
+    route:
+      enabled: true
+      tls:
+        termination: reencrypt
+  sso:
+    dex:
+      resources:
+        limits:
+          cpu: 500m
+          memory: 256Mi
+        requests:
+          cpu: 250m
+          memory: 128Mi
+      openShiftOAuth: true
+    provider: dex
+  rbac:
+    defaultPolicy: ''
+    policy: |
+      g, ocpadmins, role:admin
+      g, project-devs, role:project-devs
+      p, role:project-devs, applications, get, */*, allow
+      p, role:project-devs, projects, get, *, allow
+      p, role:project-devs, clusters, get, *, allow
+    scopes: '[groups]'
+  repo:
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1024Mi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+    volumeMounts:
+    - mountPath: /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
+      name: cluster-root-ca-bundle
+      subPath: ca-bundle.crt
+    volumes:
+    - configMap:
+        name: cluster-root-ca-bundle
+      name: cluster-root-ca-bundle
+  ha:
+    resources:
+      limits:
+        cpu: 500m
+        memory: 256Mi
+      requests:
+        cpu: 250m
+        memory: 128Mi
+    enabled: false
+  redis:
+    resources:
+      limits:
+        cpu: 500m
+        memory: 256Mi
+      requests:
+        cpu: 250m
+        memory: 128Mi
+  controller:
+    resources:
+      limits:
+        cpu: 2000m
+        memory: 2048Mi
+      requests:
+        cpu: 250m
+        memory: 1024Mi
+[student@workstation gitops-review]$
+[student@workstation gitops-review]$ oc apply -f argocd-instance.yaml 
+argocd.argoproj.io/argocd created
+
+
+
+[student@workstation gitops-review]$ oc get pod
+NAME                                  READY   STATUS             RESTARTS      AGE
+argocd-application-controller-0       1/1     Running            0             3m25s
+argocd-dex-server-d5cd486fb-8k2nj     1/1     Running            0             3m25s
+argocd-redis-7545d85b5-dkkfx          1/1     Running            0             3m25s
+argocd-repo-server-5c8bc5758d-kcpkx   1/1     Running            0             3m25s
+argocd-server-68cbc7589c-z7qnz        0/1     CrashLoopBackOff   5 (30s ago)   3m25s
+[student@workstation gitops-review]$ oc logs argocd-server-68cbc7589c-z7qnz
+time="2025-04-27T07:02:36Z" level=info msg="ArgoCD API Server is starting" built="2023-10-30T19:24:59Z" commit=ebab8ec6259a6997fa3f310cddc539cb0c76b442 namespace=gitops-review port=8080 version=v2.8.4+ebab8ec
+time="2025-04-27T07:02:36Z" level=info msg="Starting configmap/secret informers"
+time="2025-04-27T07:02:36Z" level=info msg="Configmap/secret informer synced"
+time="2025-04-27T07:02:36Z" level=info msg="Loading TLS configuration from secret gitops-review/argocd-server-tls"
+time="2025-04-27T07:02:36Z" level=info msg="Starting configmap/secret informers"
+time="2025-04-27T07:02:36Z" level=info msg="Loading TLS configuration from secret gitops-review/argocd-server-tls"
+time="2025-04-27T07:02:36Z" level=info msg="secrets informer cancelled"
+time="2025-04-27T07:02:36Z" level=info msg="Configmap/secret informer synced"
+time="2025-04-27T07:02:36Z" level=info msg="configmap informer cancelled"
+time="2025-04-27T07:02:36Z" level=info msg="Starting configmap/secret informers"
+time="2025-04-27T07:02:36Z" level=info msg="Loading TLS configuration from secret gitops-review/argocd-server-tls"
+time="2025-04-27T07:02:36Z" level=info msg="configmap informer cancelled"
+time="2025-04-27T07:02:36Z" level=info msg="Configmap/secret informer synced"
+time="2025-04-27T07:02:36Z" level=info msg="secrets informer cancelled"
+time="2025-04-27T07:02:36Z" level=info msg="Loading TLS configuration from secret gitops-review/argocd-server-tls"
+time="2025-04-27T07:02:36Z" level=info msg="Loading TLS configuration from secret gitops-review/argocd-server-tls"
+time="2025-04-27T07:02:36Z" level=info msg="Loading TLS configuration from secret gitops-review/argocd-server-tls"
+time="2025-04-27T07:02:36Z" level=info msg="Creating client app (argo-cd)"
+time="2025-04-27T07:02:36Z" level=info msg="argocd v2.8.4+ebab8ec serving on port 8080 (url: https://argocd-server-gitops-review.apps.ocp4.example.com, tls: true, namespace: gitops-review, sso: true)"
+time="2025-04-27T07:02:36Z" level=info msg="Enabled application namespace patterns: gitops-review"
+time="2025-04-27T07:02:36Z" level=info msg="0xc001520600 subscribed to settings updates"
+time="2025-04-27T07:02:36Z" level=fatal msg="invalid RBAC policy: p, role:project-devs. applications, get, */*, allow"
+[student@workstation gitops-review]$ vi argocd-instance.yaml 
+
+
+[student@workstation gitops-review]$ oc delete -f argocd-instance.yaml 
+argocd.argoproj.io "argocd" deleted
+[student@workstation gitops-review]$ oc apply -f argocd-instance.yaml 
+argocd.argoproj.io/argocd created
+
+[student@workstation gitops-review]$ oc get pod
+NAME                                  READY   STATUS    RESTARTS   AGE
+argocd-application-controller-0       1/1     Running   0          30s
+argocd-dex-server-68df4cf9ff-7zc4b    1/1     Running   0          30s
+argocd-redis-7545d85b5-cf7mc          1/1     Running   0          30s
+argocd-repo-server-5c8bc5758d-8g85c   1/1     Running   0          30s
+argocd-server-68cbc7589c-4xhth        1/1     Running   0          30s
+[student@workstation gitops-review]$ 
+[student@workstation gitops-review]$ 
+[student@workstation gitops-review]$ 
+[student@workstation gitops-review]$ oc adm groups new project-devs
+group.user.openshift.io/project-devs created
+[student@workstation gitops-review]$ oc adm groups add-users project-devs developer
+group.user.openshift.io/project-devs added: "developer"
+[student@workstation gitops-review]$ oc adm policy add-role-to-group view -n gitops-review 
+error: you must specify at least two arguments: <role> <group> [group]...
+[student@workstation gitops-review]$ oc adm policy add-role-to-group view  project-devs -n gitops-review 
+clusterrole.rbac.authorization.k8s.io/view added: "project-devs"
+[student@workstation gitops-review]$ oc get route
+NAME            HOST/PORT                                           PATH   SERVICES        PORT    TERMINATION   WILDCARD
+argocd-server   argocd-server-gitops-review.apps.ocp4.example.com          argocd-server   https   reencrypt     None
+[student@workstation gitops-review]$ oc create cronjob periodic-process \
+  -n gitops-review --schedule "* * * * *" \
+  --image registry.ocp4.example.com:8443/ubi9/ubi \
+  --dry-run=client -o yaml -- echo hello
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  creationTimestamp: null
+  name: periodic-process
+  namespace: gitops-review
+spec:
+  jobTemplate:
+    metadata:
+      creationTimestamp: null
+      name: periodic-process
+    spec:
+      template:
+        metadata:
+          creationTimestamp: null
+        spec:
+          containers:
+          - command:
+            - echo
+            - hello
+            image: registry.ocp4.example.com:8443/ubi9/ubi
+            name: periodic-process
+            resources: {}
+          restartPolicy: OnFailure
+  schedule: '* * * * *'
+status: {}
+[student@workstation gitops-review]$ git clone \
+  https://git.ocp4.example.com/developer/cron-job.git
+Cloning into 'cron-job'...
+remote: Enumerating objects: 3, done.
+remote: Counting objects: 100% (3/3), done.
+remote: Total 3 (delta 0), reused 0 (delta 0), pack-reused 0
+Receiving objects: 100% (3/3), done.
+[student@workstation gitops-review]$ ls
+argocd-instance.yaml  cron-job
+[student@workstation gitops-review]$ cd cron-job/
+[student@workstation cron-job]$ ls
+README.md
+[student@workstation cron-job]$ oc create cronjob periodic-process   -n gitops-review --schedule "* * * * *"   --image registry.ocp4.example.com:8443/ubi9/ubi   --dry-run=client -o yaml -- echo hello >periodic-process.yaml
+[student@workstation cron-job]$ vi periodic-process.yaml 
+[student@workstation cron-job]$ git add periodic-process.yaml 
+[student@workstation cron-job]$ git commit -m "Added cronjob"
+[main 7040735] Added cronjob
+ 1 file changed, 26 insertions(+)
+ create mode 100644 periodic-process.yaml
+[student@workstation cron-job]$ git push
+Enumerating objects: 4, done.
+Counting objects: 100% (4/4), done.
+Delta compression using up to 2 threads
+Compressing objects: 100% (3/3), done.
+Writing objects: 100% (3/3), 547 bytes | 547.00 KiB/s, done.
+Total 3 (delta 0), reused 0 (delta 0), pack-reused 0
+To https://git.ocp4.example.com/developer/cron-job.git
+   96e52f7..7040735  main -> main
+[student@workstation cron-job]$ oc login -u admin -p redhatocp   https://api.ocp4.example.com:6443
+Login successful.
+
+You have access to 73 projects, the list has been suppressed. You can list all projects with 'oc projects'
+
+Using project "gitops-review".
+[student@workstation cron-job]$ oc login -u developer -p developer
+Login successful.
+
+You have one project on this server: "gitops-review"
+
+Using project "gitops-review".
+[student@workstation cron-job]$ 
+[student@workstation cron-job]$ 
+[student@workstation cron-job]$ oc get pod
+NAME                                  READY   STATUS      RESTARTS   AGE
+argocd-application-controller-0       1/1     Running     0          12m
+argocd-dex-server-68df4cf9ff-7zc4b    1/1     Running     0          12m
+argocd-redis-7545d85b5-cf7mc          1/1     Running     0          12m
+argocd-repo-server-5c8bc5758d-8g85c   1/1     Running     0          12m
+argocd-server-68cbc7589c-4xhth        1/1     Running     0          12m
+periodic-process-29095638-4zxg9       0/1     Completed   0          55s
+[student@workstation cron-job]$ oc logs periodic-process-2909563
+Error from server (NotFound): pods "periodic-process-2909563" not found
+[student@workstation cron-job]$ oc get pod
+NAME                                  READY   STATUS      RESTARTS   AGE
+argocd-application-controller-0       1/1     Running     0          12m
+argocd-dex-server-68df4cf9ff-7zc4b    1/1     Running     0          12m
+argocd-redis-7545d85b5-cf7mc          1/1     Running     0          12m
+argocd-repo-server-5c8bc5758d-8g85c   1/1     Running     0          12m
+argocd-server-68cbc7589c-4xhth        1/1     Running     0          12m
+periodic-process-29095638-4zxg9       0/1     Completed   0          72s
+periodic-process-29095639-fk2cb       0/1     Completed   0          12s
+[student@workstation cron-job]$ oc logs periodic-process-29095638-4zxg9 
+hello
+[student@workstation cron-job]$ 
+[student@workstation cron-job]$ 
+[student@workstation cron-job]$ 
+[student@workstation cron-job]$ 
+[student@workstation cron-job]$ 
+[student@workstation cron-job]$ cd
+[student@workstation ~]$ lab grade gitops-review
+PASS    Argo CD instance exists in the gitops-review namespace
+PASS    Verify project-devs group exists
+PASS    Verify project-devs group has the view role
+PASS    periodic-process cron job is correctly defined in gitops-review namespace
+[student@workstation ~]$
+
+
+=================================================================
+
+Alert configuration
+=============================================================================================
+[student@workstation monitoring-alerts]$ oc get secret -n openshift-monitoring | grep alertmanager-main
+alertmanager-main                                       Opaque                                1      417d
+alertmanager-main-dockercfg-wkcrh                       kubernetes.io/dockercfg               1      417d
+alertmanager-main-generated                             Opaque                                1      417d
+alertmanager-main-proxy                                 Opaque                                1      417d
+alertmanager-main-tls                                   kubernetes.io/tls                     2      417d
+alertmanager-main-tls-assets-0                          Opaque                                0      417d
+alertmanager-main-token-7cv5p                           kubernetes.io/service-account-token   4      417d
+alertmanager-main-web-config                            Opaque                                1      417d
+
+[student@workstation monitoring-alerts]$ oc extract secret/alertmanager-main -n openshift-monitoring --to .
+alertmanager.yaml
+[student@workstation monitoring-alerts]$
+
+[student@workstation monitoring-alerts]$ cat alertmanager.yaml 
+"global":
+  "resolve_timeout": "5m"
+"inhibit_rules":
+- "equal":
+  - "namespace"
+  - "alertname"
+  "source_matchers":
+  - "severity = critical"
+  "target_matchers":
+  - "severity =~ warning|info"
+- "equal":
+  - "namespace"
+  - "alertname"
+  "source_matchers":
+  - "severity = warning"
+  "target_matchers":
+  - "severity = info"
+- "equal":
+  - "namespace"
+  "source_matchers":
+  - "alertname = InfoInhibitor"
+  "target_matchers":
+  - "severity = info"
+"receivers":
+- "name": "Default"
+- "name": "Watchdog"
+- "name": "Critical"
+- "name": "null"
+"route":
+  "group_by":
+  - "namespace"
+  "group_interval": "5m"
+  "group_wait": "30s"
+  "receiver": "Default"
+  "repeat_interval": "12h"
+  "routes":
+  - "matchers":
+    - "alertname = Watchdog"
+    "receiver": "Watchdog"
+  - "matchers":
+    - "alertname = InfoInhibitor"
+    "receiver": "null"
+  - "matchers":
+    - "severity = critical"
+    "receiver": "Critical"[student@workstation monitoring-alerts]$ 
+[student@workstation monitoring-alerts]$ sed -i 's/"//g' alertmanager.yaml 
+[student@workstation monitoring-alerts]$ cat alertmanager.yaml 
+global:
+  resolve_timeout: 5m
+inhibit_rules:
+- equal:
+  - namespace
+  - alertname
+  source_matchers:
+  - severity = critical
+  target_matchers:
+  - severity =~ warning|info
+- equal:
+  - namespace
+  - alertname
+  source_matchers:
+  - severity = warning
+  target_matchers:
+  - severity = info
+- equal:
+  - namespace
+  source_matchers:
+  - alertname = InfoInhibitor
+  target_matchers:
+  - severity = info
+receivers:
+- name: Default
+- name: Watchdog
+- name: Critical
+- name: null
+route:
+  group_by:
+  - namespace
+  group_interval: 5m
+  group_wait: 30s
+  receiver: Default
+  repeat_interval: 12h
+  routes:
+  - matchers:
+    - alertname = Watchdog
+    receiver: Watchdog
+  - matchers:
+    - alertname = InfoInhibitor
+    receiver: null
+  - matchers:
+    - severity = critical
+    receiver: Critical[student@workstation monitoring-alerts]$
+    
+ [student@workstation monitoring-alerts]$ cat alertmanager.yaml 
+global:
+  resolve_timeout: 5m
+  smtp_from: alerts@ocp4.example.com
+  smtp_smarthost: '192.168.50.254:25'
+  smtp_hello: localhost
+  smtp_auth_username: smtp_training
+  smtp_auth_password: Red_H4T@!
+  smtp_require_tls: false
+inhibit_rules:
+- equal:
+  - namespace
+  - alertname
+  source_matchers:
+  - severity = critical
+  target_matchers:
+  - severity =~ warning|info
+- equal:
+  - namespace
+  - alertname
+  source_matchers:
+  - severity = warning
+  target_matchers:
+  - severity = info
+- equal:
+  - namespace
+  source_matchers:
+  - alertname = InfoInhibitor
+  target_matchers:
+  - severity = info
+receivers:
+- name: Default
+- name: Watchdog
+- name: Critical
+- name: 'null'
+- name: email
+  email_configs:
+  - to: ocp-admins@example.com
+route:
+  group_by:
+  - namespace
+  group_interval: 2m
+  group_wait: 30s
+  receiver: Default
+  repeat_interval: 1m
+  routes:
+  - matchers:
+    - alertname = Watchdog
+    receiver: Watchdog
+  - matchers:
+    - alertname = InfoInhibitor
+    receiver: 'null'
+  - matchers:
+    - severity = critical
+    receiver: Critical
+  - receiver: email
+    match:
+      alertname: PersistentVolumeUsageNearFull
+[student@workstation monitoring-alerts]$ 
+
+[student@workstation monitoring-alerts]$ oc set data secret/alertmanager-main --from-file alertmanager.yaml -n openshift-monitoring 
+secret/alertmanager-main data updated
+[student@workstation monitoring-alerts]$
+
+student@workstation monitoring-alerts]$ oc logs sts/alertmanager-main -n openshift-monitoring 
+Found 2 pods, using pod/alertmanager-main-1
+ts=2025-04-27T07:45:38.688Z caller=main.go:240 level=info msg="Starting Alertmanager" version="(version=0.25.0, branch=rhaos-4.14-rhel-8, revision=34b15d55d6cfb819f8302b411f21072401a0740c)"
+ts=2025-04-27T07:45:38.688Z caller=main.go:241 level=info build_context="(go=go1.20.12 X:strictfipsruntime, user=root@4ecc6b7935dd, date=20231017-14:05:34)"
+ts=2025-04-27T07:45:38.712Z caller=cluster.go:681 level=info component=cluster msg="Waiting for gossip to settle..." interval=2s
+ts=2025-04-27T07:45:38.754Z caller=coordinator.go:113 level=info component=configuration msg="Loading configuration file" file=/etc/alertmanager/config_out/alertmanager.env.yaml
+ts=2025-04-27T07:45:38.757Z caller=coordinator.go:126 level=info component=configuration msg="Completed loading of configuration file" file=/etc/alertmanager/config_out/alertmanager.env.yaml
+ts=2025-04-27T07:45:38.764Z caller=tls_config.go:232 level=info msg="Listening on" address=127.0.0.1:9093
+ts=2025-04-27T07:45:38.764Z caller=tls_config.go:271 level=info msg="TLS is disabled." http2=false address=127.0.0.1:9093
+ts=2025-04-27T07:45:38.842Z caller=coordinator.go:113 level=info component=configuration msg="Loading configuration file" file=/etc/alertmanager/config_out/alertmanager.env.yaml
+ts=2025-04-27T07:45:38.842Z caller=coordinator.go:126 level=info component=configuration msg="Completed loading of configuration file" file=/etc/alertmanager/config_out/alertmanager.env.yaml
+ts=2025-04-27T07:45:40.713Z caller=cluster.go:706 level=info component=cluster msg="gossip not settled" polls=0 before=0 now=2 elapsed=2.000867811s
+ts=2025-04-27T07:45:48.716Z caller=cluster.go:698 level=info component=cluster msg="gossip settled; proceeding" elapsed=10.004130064s
+ts=2025-04-27T07:45:53.724Z caller=cluster.go:471 level=warn component=cluster msg=refresh result=failure addr=alertmanager-main-1.alertmanager-operated:9094 err="1 error occurred:\n\t* Failed to resolve alertmanager-main-1.alertmanager-operated:9094: lookup alertmanager-main-1.alertmanager-operated on 172.30.0.10:53: no such host\n\n"
+ts=2025-04-27T07:46:08.725Z caller=cluster.go:471 level=warn component=cluster msg=refresh result=failure addr=alertmanager-main-0.alertmanager-operated:9094 err="1 error occurred:\n\t* Failed to resolve alertmanager-main-0.alertmanager-operated:9094: lookup alertmanager-main-0.alertmanager-operated on 172.30.0.10:53: no such host\n\n"
+ts=2025-04-27T07:46:23.722Z caller=cluster.go:471 level=warn component=cluster msg=refresh result=failure addr=alertmanager-main-0.alertmanager-operated:9094 err="1 error occurred:\n\t* Failed to resolve alertmanager-main-0.alertmanager-operated:9094: lookup alertmanager-main-0.alertmanager-operated on 172.30.0.10:53: no such host\n\n"
+ts=2025-04-27T08:01:58.578Z caller=coordinator.go:113 level=info component=configuration msg="Loading configuration file" file=/etc/alertmanager/config_out/alertmanager.env.yaml
+ts=2025-04-27T08:01:58.579Z caller=coordinator.go:118 level=error component=configuration msg="Loading configuration file failed" file=/etc/alertmanager/config_out/alertmanager.env.yaml err="missing name in receiver"
+ts=2025-04-27T08:02:03.583Z caller=coordinator.go:113 level=info component=configuration msg="Loading configuration file" file=/etc/alertmanager/config_out/alertmanager.env.yaml
+ts=2025-04-27T08:02:03.584Z caller=coordinator.go:118 level=error component=configuration msg="Loading configuration file failed" file=/etc/alertmanager/config_out/alertmanager.env.yaml err="missing name in receiver"
+ts=2025-04-27T08:02:08.579Z caller=coordinator.go:113 level=info component=configuration msg="Loading configuration file" file=/etc/alertmanager/config_out/alertmanager.env.yaml
+ts=2025-04-27T08:02:08.580Z caller=coordinator.go:118 level=error component=configuration msg="Loading configuration file failed" file=/etc/alertmanager/config_out/alertmanager.env.yaml err="missing name in receiver"
+ts=2025-04-27T08:02:13.579Z caller=coordinator.go:113 level=info component=configuration msg="Loading configuration file" file=/etc/alertmanager/config_out/alertmanager.env.yaml
+ts=2025-04-27T08:02:13.579Z caller=coordinator.go:118 level=error component=configuration msg="Loading configuration file failed" file=/etc/alertmanager/config_out/alertmanager.env.yaml err="missing name in receiver"
+ts=2025-04-27T08:02:18.582Z caller=coordinator.go:113 level=info component=configuration msg="Loading configuration file" file=/etc/alertmanager/config_out/alertmanager.env.yaml
+ts=2025-04-27T08:02:18.583Z caller=coordinator.go:118 level=error component=configuration msg="Loading configuration file failed" file=/etc/alertmanager/config_out/alertmanager.env.yaml err="missing name in receiver"
+ts=2025-04-27T08:02:23.583Z caller=coordinator.go:113 level=info component=configuration msg="Loading configuration file" file=/etc/alertmanager/config_out/alertmanager.env.yaml
+ts=2025-04-27T08:02:23.584Z caller=coordinator.go:118 level=error component=configuration msg="Loading configuration file failed" file=/etc/alertmanager/config_out/alertmanager.env.yaml err="missing name in receiver"
+ts=2025-04-27T08:02:28.579Z caller=coordinator.go:113 level=info component=configuration msg="Loading configuration file" file=/etc/alertmanager/config_out/alertmanager.env.yaml
+ts=2025-04-27T08:02:28.580Z caller=coordinator.go:118 level=error component=configuration msg="Loading configuration file failed" file=/etc/alertmanager/config_out/alertmanager.env.yaml err="missing name in receiver"
+ts=2025-04-27T08:02:33.578Z caller=coordinator.go:113 level=info component=configuration msg="Loading configuration file" file=/etc/alertmanager/config_out/alertmanager.env.yaml
+ts=2025-04-27T08:02:33.578Z caller=coordinator.go:118 level=error component=configuration msg="Loading configuration file failed" file=/etc/alertmanager/config_out/alertmanager.env.yaml err="missing name in receiver"
+[student@workstation monitoring-alerts]$
+
+
+null should be in 'null' 
+
+ts=2025-04-27T08:04:58.580Z caller=coordinator.go:126 level=info component=configuration msg="Completed loading of configuration file" file=/etc/alertmanager/config_out/alertmanager.env.yaml
+ts=2025-04-27T08:04:58.581Z caller=main.go:441 level=info component=configuration msg="skipping creation of receiver not referenced by any route" receiver="null"
+ts=2025-04-27T08:04:58.581Z caller=main.go:441 level=info component=configuration msg="skipping creation of receiver not referenced by any route" receiver=email
+
+ssh lab@utility
+
+mutt
+---------------------------------------------------------------------------------------------------------------------
+
+  [student@workstation monitoring-review]$ cat alertmanager.yaml 
+global:
+  resolve_timeout: 5m
+  smtp_smarthost: 192.168.50.254:25
+  smtp_hello: localhost
+  smtp_auth_username: smtp_training
+  smtp_auth_password: Red_H4T@!
+  smtp_from: alerts@ocp4.example.com
+  smtp_require_tls: false
+inhibit_rules:
+- equal:
+  - namespace
+  - alertname
+  source_matchers:
+  - severity = critical
+  target_matchers:
+  - severity =~ warning|info
+- equal:
+  - namespace
+  - alertname
+  source_matchers:
+  - severity = warning
+  target_matchers:
+  - severity = info
+- equal:
+  - namespace
+  source_matchers:
+  - alertname = InfoInhibitor
+  target_matchers:
+  - severity = info
+receivers:
+- name: Default
+- name: Watchdog
+- name: Critical
+- name: 'null'
+- name: cpu-overcommit
+  email_configs:
+    - to: ocp-admins@example.com
+route:
+  group_by:
+  - namespace
+  group_interval: 1m
+  group_wait: 1m
+  receiver: Default
+  repeat_interval: 1m
+  routes:
+  - matchers:
+    - alertname = Watchdog
+    receiver: Watchdog
+  - matchers:
+    - alertname = InfoInhibitor
+    receiver: 'null'
+  - matchers:
+    - severity = critical
+    receiver: Critical
+    continue: true
+  - matchers:
+    - alertname = NodeCPUOvercommit
+    receiver: cpu-overcommit
+=============
+
+[student@workstation logging-forward]$ vi clusterlogging.yml 
+[student@workstation logging-forward]$ cat clusterlogging.yml 
+apiVersion: logging.openshift.io/v1
+kind: ClusterLogging
+metadata:
+  name: instance
+  namespace: openshift-logging
+spec:
+  managementState: Managed
+  collection:
+[student@workstation logging-forward]$
+student@workstation logging-forward]$ oc apply -f clusterlogging.yml
+clusterlogging.logging.openshift.io/instance created
+[student@workstation logging-forward]$ oc get pod
+NAME                                        READY   STATUS    RESTARTS   AGE
+cluster-logging-operator-7657c74cb6-fkjhp   1/1     Running   0          2m8s
+[student@workstation logging-forward]$ 
+
+[student@workstation logging-forward]$ cat clusterlogforwarder.yml 
+apiVersion: logging.openshift.io/v1
+kind: ClusterLogForwarder
+metadata:
+    name: instance
+    namespace: openshift-logging
+spec:
+    inputs:
+    - name: critical-apps
+      application:
+        selector: 
+          matchLabels:
+            logging: critical
+
+    outputs:
+    - name: audit-syslog
+      type: syslog
+      url: tcp://utility.lab.example.com:514
+      syslog:
+        msgID: audit
+        appName: ocp-lab
+        facility: user
+        procID: vector
+        rfc: RFC5424
+        severity: informational
+
+    - name: apps-syslog
+      type: syslog
+      url: tcp://utility.lab.example.com:514
+      syslog:
+        msgID: apps
+        appName: ocp-lab
+        facility: user
+        procID: vector
+        rfc: RFC5424
+        severity: informational
+
+    - name: infra-syslog
+      type: syslog
+      url: tcp://utility.lab.example.com:514
+      syslog:
+        msgID: infra
+        appName: ocp-lab
+        facility: user
+        procID: vector
+        rfc: RFC5424
+        severity: informational
+
+    pipelines:
+    - name: critical-apps-syslog
+      inputRefs:
+        - critical-apps
+      outputRefs:
+        - apps-syslog
+
+    - name: infra-syslog
+      inputRefs:
+        - infrastructure
+      outputRefs:
+        - infra-syslog
+
+    - name: audit-syslog
+      inputRefs:
+        - audit
+      outputRefs:
+        - audit-syslog
+[student@workstation logging-forward]$ 
+
+[student@workstation logging-forward]$ oc apply -f clusterlogforwarder.yml 
+clusterlogforwarder.logging.openshift.io/instance created
+[student@workstation logging-forward]$ 
+
+[student@workstation logging-forward]$ oc get pod
+NAME                                        READY   STATUS        RESTARTS   AGE
+cluster-logging-operator-7657c74cb6-fkjhp   1/1     Running       0          11m
+collector-bxqt4                             0/1     Terminating   0          15s
+collector-ghv7g                             1/1     Running       0          8s
+collector-gj276                             1/1     Running       0          6s
+collector-jltxv                             1/1     Terminating   0          15s
+collector-kv74j                             1/1     Running       0          8s
+collector-tqxfq                             0/1     Terminating   0          15s
+[student@workstation logging-forward]$ 
+[student@workstation logging-forward]$ 
+[student@workstation logging-forward]$ 
+[student@workstation logging-forward]$
+
+student@workstation logging-forward]$ oc get pod
+NAME                                        READY   STATUS    RESTARTS   AGE
+cluster-logging-operator-7657c74cb6-fkjhp   1/1     Running   0          12m
+collector-ghv7g                             1/1     Running   0          25s
+collector-gj276                             1/1     Running   0          23s
+collector-kv74j                             1/1     Running   0          25s
+collector-qcl7z                             1/1     Running   0          16s
+collector-rq4kp                             1/1     Running   0          17s
+collector-tg8fw                             1/1     Running   0          16s
+[student@workstation logging-forward]$
+
+[student@workstation logging-forward]$ oc process -f eventrouter.yml | oc apply -f -
+serviceaccount/eventrouter created
+clusterrole.rbac.authorization.k8s.io/event-reader created
+clusterrolebinding.rbac.authorization.k8s.io/event-reader-binding created
+configmap/eventrouter created
+deployment.apps/eventrouter created
+[student@workstation logging-forward]$
+
+[student@workstation logging-forward]$ oc get pod
+NAME                                        READY   STATUS    RESTARTS   AGE
+cluster-logging-operator-7657c74cb6-fkjhp   1/1     Running   0          14m
+collector-ghv7g                             1/1     Running   0          2m35s
+collector-gj276                             1/1     Running   0          2m33s
+collector-kv74j                             1/1     Running   0          2m35s
+collector-qcl7z                             1/1     Running   0          2m26s
+collector-rq4kp                             1/1     Running   0          2m27s
+collector-tg8fw                             1/1     Running   0          2m26s
+eventrouter-55bc75c67f-qkzbc                1/1     Running   0          25s
+[student@workstation logging-forward]$
+
+[student@workstation logging-forward]$ ssh lab@utility
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+IT IS POSSIBLE THAT SOMEONE IS DOING SOMETHING NASTY!
+Someone could be eavesdropping on you right now (man-in-the-middle attack)!
+It is also possible that a host key has just been changed.
+The fingerprint for the ED25519 key sent by the remote host is
+SHA256:2O5jHuQdVFJuiT8oxFxMS+WpPInTfy5hnaxyf42bMZY.
+Please contact your system administrator.
+Add correct host key in /home/student/.ssh/known_hosts to get rid of this message.
+Offending ED25519 key in /home/student/.ssh/known_hosts:1
+Password authentication is disabled to avoid man-in-the-middle attacks.
+Keyboard-interactive authentication is disabled to avoid man-in-the-middle attacks.
+UpdateHostkeys is disabled because the host key is not trusted.
+Register this system with Red Hat Insights: insights-client --register
+Create an account or view all your systems at https://red.ht/insights-dashboard
+Last login: Sun Apr 27 10:20:02 2025 from 172.25.250.9
+[lab@utility ~]$ cd /var/log/openshift/
+[lab@utility openshift]$ ls
+apps.log  audit.log  infra.log  infra.log.1
+[lab@utility openshift]$ 
+================================================================
+
+[student@workstation logging-central]$ oc create secret generic logging-loki-odf -n openshift-logging --from-literal access_key_id=uTuAvaniQmB0YsP5C7Vr --from-literal access_key_secret=AzqVU7zBK0Hw/i6qriMmnREVLDq1W6NKpk9sg3Cl --from-literal bucketnames=loki-bucket-odf-be4d0cf4-b12a-4c15-81fe-82daf275d64e --from-literal endpoint=s3.openshift-storage.svc:443
+secret/logging-loki-odf created
+[student@workstation logging-central]$
+
+[student@workstation logging-central]$ cat lokistack.yaml 
+apiVersion: loki.grafana.com/v1
+kind: LokiStack
+metadata:
+  name: logging-loki
+  namespace: openshift-logging
+spec:
+  size: 1x.demo
+  storage:
+    secret:
+      name: logging-loki-odf
+      type: s3
+    tls:
+      caName: openshift-service-ca.crt
+  storageClassName: ocs-external-storagecluster-ceph-rbd
+  tenants:
+    mode: openshift-logging
+[student@workstation logging-central]$
+
+[student@workstation logging-central]$ oc create -f lokistack.yaml
+lokistack.loki.grafana.com/logging-loki created
+[student@workstation logging-central]$ oc get pod
+NAME                                        READY   STATUS    RESTARTS   AGE
+cluster-logging-operator-554849f7dd-99fvx   1/1     Running   0          11m
+[student@workstation logging-central]$
+
+[student@workstation logging-central]$ oc get pod
+NAME                                           READY   STATUS    RESTARTS   AGE
+cluster-logging-operator-554849f7dd-99fvx      1/1     Running   0          12m
+logging-loki-compactor-0                       0/1     Running   0          21s
+logging-loki-distributor-7fffc6cfd5-qznrm      1/1     Running   0          21s
+logging-loki-gateway-5dd8d694df-hkk7t          2/2     Running   0          20s
+logging-loki-gateway-5dd8d694df-jbmgm          2/2     Running   0          20s
+logging-loki-index-gateway-0                   0/1     Running   0          20s
+logging-loki-ingester-0                        0/1     Running   0          21s
+logging-loki-querier-6b4f59894b-9q8bh          0/1     Running   0          21s
+logging-loki-query-frontend-68cd77d946-lt8z2   1/1     Running   0          21s
+[student@workstation logging-central]$ 
+
+
+[student@workstation logging-central]$ oc get pod
+NAME                                           READY   STATUS    RESTARTS   AGE
+cluster-logging-operator-554849f7dd-99fvx      1/1     Running   0          13m
+logging-loki-compactor-0                       1/1     Running   0          66s
+logging-loki-distributor-7fffc6cfd5-qznrm      1/1     Running   0          66s
+logging-loki-gateway-5dd8d694df-hkk7t          2/2     Running   0          65s
+logging-loki-gateway-5dd8d694df-jbmgm          2/2     Running   0          65s
+logging-loki-index-gateway-0                   1/1     Running   0          65s
+logging-loki-ingester-0                        1/1     Running   0          66s
+logging-loki-querier-6b4f59894b-9q8bh          1/1     Running   0          66s
+logging-loki-query-frontend-68cd77d946-lt8z2   1/1     Running   0          66s
+[student@workstation logging-central]$ 
+
+[student@workstation logging-central]$ cat clusterlogging.yaml 
+apiVersion: logging.openshift.io/v1
+kind: ClusterLogging
+metadata:
+  name: instance
+  namespace: openshift-logging
+spec:
+  managementState: Managed
+  logStore:
+    type: lokistack
+    lokistack:
+      name: logging-loki
+  collection:
+    type: vector
+  visualization:
+    type: ocp-console
+[student@workstation logging-central]$ 
+
+[student@workstation logging-central]$ oc apply -f clusterlogging.yaml 
+clusterlogging.logging.openshift.io/instance created
+[student@workstation logging-central]$
+
+[student@workstation logging-central]$ oc get pod
+NAME                                           READY   STATUS    RESTARTS   AGE
+cluster-logging-operator-554849f7dd-99fvx      1/1     Running   0          15m
+collector-2jw6g                                1/1     Running   0          19s
+collector-5dnkh                                1/1     Running   0          19s
+collector-bc2x4                                1/1     Running   0          19s
+collector-v9gvk                                1/1     Running   0          19s
+collector-x2d7z                                1/1     Running   0          19s
+collector-z4h85                                1/1     Running   0          19s
+logging-loki-compactor-0                       1/1     Running   0          3m10s
+logging-loki-distributor-7fffc6cfd5-qznrm      1/1     Running   0          3m10s
+logging-loki-gateway-5dd8d694df-hkk7t          2/2     Running   0          3m9s
+logging-loki-gateway-5dd8d694df-jbmgm          2/2     Running   0          3m9s
+logging-loki-index-gateway-0                   1/1     Running   0          3m9s
+logging-loki-ingester-0                        1/1     Running   0          3m10s
+logging-loki-querier-6b4f59894b-9q8bh          1/1     Running   0          3m10s
+logging-loki-query-frontend-68cd77d946-lt8z2   1/1     Running   0          3m10s
+logging-view-plugin-5b9b5b7bdc-vmjlt           1/1     Running   0          26s
+[student@workstation logging-central]$
+
+Enable the console plug-in for the OpenShift Logging operator. Verify that you have access to the logs. logging-operator details page --enabled
+
+[student@workstation logging-central]$ cat forwarder.yaml 
+apiVersion: logging.openshift.io/v1
+kind: ClusterLogForwarder
+metadata:
+  name: instance
+  namespace: openshift-logging
+spec:
+  pipelines:
+  - name: all-to-default
+    inputRefs:
+    - infrastructure
+    - application
+    - audit
+    outputRefs:
+    - default
+[student@workstation logging-central]$
+
+[student@workstation logging-central]$ oc apply -f forwarder.yaml 
+clusterlogforwarder.logging.openshift.io/instance created
+[student@workstation logging-central]$
+
+Check the audit logs in logs section drop down
+
+=======================================================
+
+[student@workstation logging-review]$ cat s3bucket.env 
+access_key_id=6lL8Ri7sJ6zejoAIM5IT
+access_key_secret=fV0AWvWNXjAYRlG/ghFlhV+ecPTqzz/b8kI7VUA2
+bucketnames=loki-bucket-odf-3cf5dafd-b690-4f1b-acba-3cb5ff5ebd5c
+endpoint=https://s3.openshift-storage.svc
+[student@workstation logging-review]$
+
+[student@workstation logging-review]$ oc create secret generic logging-loki-odf --from-env-file s3bucket.env 
+secret/logging-loki-odf created
+[student@workstation logging-review]$
+
+[student@workstation logging-review]$ oc get secrets logging-loki-odf -oyaml
+apiVersion: v1
+data:
+  access_key_id: NmxMOFJpN3NKNnplam9BSU01SVQ=
+  access_key_secret: ZlYwQVd2V05YakFZUmxHL2doRmxoVitlY1BUcXp6L2I4a0k3VlVBMg==
+  bucketnames: bG9raS1idWNrZXQtb2RmLTNjZjVkYWZkLWI2OTAtNGYxYi1hY2JhLTNjYjVmZjVlYmQ1Yw==
+  endpoint: aHR0cHM6Ly9zMy5vcGVuc2hpZnQtc3RvcmFnZS5zdmM=
+kind: Secret
+metadata:
+  creationTimestamp: "2025-04-27T15:12:26Z"
+  name: logging-loki-odf
+  namespace: openshift-logging
+  resourceVersion: "489265"
+  uid: 9298b1cc-1459-4f58-9a67-9c28d7761add
+type: Opaque
+[student@workstation logging-review]$ 
+
+student@workstation logging-review]$ cat lokistack.yml 
+apiVersion: loki.grafana.com/v1
+kind: LokiStack
+metadata:
+  name: logging-loki
+  namespace: openshift-logging
+spec:
+  limits:
+    global:
+      retention:
+        days: 30
+        streams:
+          - selector: '{kubernetes_namespace_name="build-ci"}'  #retention for build-ci namespace
+            priority: 1
+            days: 7
+  size: 1x.demo
+  storage:
+    tls:
+      caName: openshift-service-ca.crt
+    secret:
+      name: logging-loki-odf
+      type: s3
+  storageClassName: ocs-external-storagecluster-ceph-rbd
+  tenants:
+    mode: openshift-logging
+[student@workstation logging-review]$
+
+student@workstation logging-review]$ oc apply -f lokistack.yml 
+lokistack.loki.grafana.com/logging-loki created
+[student@workstation logging-review]$ oc get pod
+NAME                                           READY   STATUS              RESTARTS   AGE
+cluster-logging-operator-554849f7dd-g98v6      1/1     Running             0          6m32s
+logging-loki-compactor-0                       0/1     Pending             0          1s
+logging-loki-distributor-5dbc4d9b-zf4v6        0/1     ContainerCreating   0          1s
+logging-loki-ingester-0                        0/1     Pending             0          1s
+logging-loki-querier-84968856f5-h7tmk          0/1     ContainerCreating   0          1s
+logging-loki-query-frontend-5f68d6887c-kp7hz   0/1     ContainerCreating   0          1s
+[student@workstation logging-review]$
+
+[student@workstation logging-review]$ oc get pod
+NAME                                           READY   STATUS    RESTARTS   AGE
+cluster-logging-operator-554849f7dd-g98v6      1/1     Running   0          7m37s
+logging-loki-compactor-0                       1/1     Running   0          66s
+logging-loki-distributor-5dbc4d9b-zf4v6        1/1     Running   0          66s
+logging-loki-gateway-657f55b6fc-558xj          2/2     Running   0          65s
+logging-loki-gateway-657f55b6fc-pchqc          2/2     Running   0          65s
+logging-loki-index-gateway-0                   1/1     Running   0          65s
+logging-loki-ingester-0                        1/1     Running   0          66s
+logging-loki-querier-84968856f5-h7tmk          1/1     Running   0          66s
+logging-loki-query-frontend-5f68d6887c-kp7hz   1/1     Running   0          66s
+[student@workstation logging-review]$
+
+
+[student@workstation logging-review]$ cat clusterlogforwarder.yml 
+apiVersion: logging.openshift.io/v1
+kind: ClusterLogForwarder
+metadata:
+  name: instance
+  namespace: openshift-logging
+spec:
+  inputs:
+    - name: production-apps
+      application:
+        selector:
+          matchLabels:
+            environment: production
+    - name: ci
+      application:
+        namespaces:
+        - build-ci
+  outputs:
+    - name: audit-syslog
+      type: syslog
+      url: tcp://utility.lab.example.com:514
+      syslog:
+        msgID: audit
+        appName: ocp-lab
+        facility: user
+        procID: vector
+        rfc: RFC5424
+        severity: informational
+  pipelines:
+    - name: to-syslog
+      inputRefs:
+        - audit
+      outputRefs:
+        - audit-syslog
+    - name: to-loki
+      inputRefs:
+        - infrastructure
+        - ci
+        - production-apps
+      outputRefs:
+        - default
+
+[student@workstation logging-review]$ oc apply -f clusterlogforwarder.yml
+clusterlogforwarder.logging.openshift.io/instance created
+[student@workstation logging-review]$
+
+[student@workstation logging-review]$ vi clusterlogging.yml 
+[student@workstation logging-review]$ cat clusterlogging.yml 
+apiVersion: logging.openshift.io/v1
+kind: ClusterLogging
+metadata:
+  name: instance
+  namespace: openshift-logging
+spec:
+  managementState: Managed
+  logStore:
+    type: lokistack
+    lokistack:
+      name: logging-loki
+  collection:
+    type: vector
+  visualization:
+    type: ocp-console
+[student@workstation logging-review]$ oc apply -f clusterlogging.yml 
+clusterlogging.logging.openshift.io/instance created
+[student@workstation logging-review]$ 
+
+enable plugin for logging operator and check log section  in observ
+
+[student@workstation logging-review]$ oc adm policy add-cluster-role-to-group \
+  cluster-logging-application-view ocpdevs
+clusterrole.rbac.authorization.k8s.io/cluster-logging-application-view added: "ocpdevs"
+[student@workstation logging-review]$
+
+==============
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
