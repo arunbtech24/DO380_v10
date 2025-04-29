@@ -1,0 +1,639 @@
+[student@workstation sync]$ oc whoami 
+admin
+[student@workstation sync]$ oc new-project auth-rhds-sync
+Now using project "auth-rhds-sync" on server "https://api.ocp4.example.com:6443".
+
+You can add applications to this project with the 'new-app' command. For example, try:
+
+    oc new-app rails-postgresql-example
+
+to build a new example application in Ruby. Or use kubectl to deploy a simple Kubernetes application:
+
+    kubectl create deployment hello-node --image=registry.k8s.io/e2e-test-images/agnhost:2.43 -- /agnhost serve-hostname
+
+[student@workstation sync]$ oc project
+Using project "auth-rhds-sync" on server "https://api.ocp4.example.com:6443".
+[student@workstation sync]$ 
+
+[student@workstation sync]$ oc create sa rhds-group-syncer
+serviceaccount/rhds-group-syncer created
+[student@workstation sync]$ oc create clusterrole rhds-group-syncer --verb get,list,create,update --resource groups
+clusterrole.rbac.authorization.k8s.io/rhds-group-syncer created
+                 
+[student@workstation sync]$ oc adm policy add-cluster-role-to-user rhds-group-syncer -z rhds-group-syncer
+clusterrole.rbac.authorization.k8s.io/rhds-group-syncer added: "rhds-group-syncer"
+[student@workstation sync]$ 
+
+
+[student@workstation sync]$ oc create secret generic rhds-secret --from-literal bindPassword=redhatocp
+secret/rhds-secret created
+[student@workstation sync]$ 
+
+
+
+[student@workstation sync]$ cat rhds-sync.yaml 
+kind: LDAPSyncConfig
+apiVersion: v1
+url: ldaps://rhds.ocp4.example.com:636
+bindDN: 'cn=Directory Manager'
+bindPassword:
+  file: /etc/secrets/bindPassword
+ca: /etc/config/ca.crt
+augmentedActiveDirectory:
+    groupsQuery:
+        baseDN: "ou=people,dc=example,dc=com"
+        scope: sub
+        derefAliases: never
+        pageSize: 0
+    groupUIDAttribute: dn
+    groupNameAttributes: [ cn ]
+    usersQuery:
+        baseDN: "ou=people,dc=example,dc=com"
+        scope: sub
+        derefAliases: never
+        filter: (objectclass=account)
+        pageSize: 0
+    userNameAttributes: [ uid ]
+    groupMembershipAttributes: [ memberOf ]
+[student@workstation sync]$ oc create configmap rhds-config --from-file rhds-sync.yaml=rhds-sync.yaml,ca.crt=rhds_ca.crt 
+configmap/rhds-config created
+[student@workstation sync]$
+
+
+[student@workstation sync]$ vi rhds-groups-cronjob.yaml 
+[student@workstation sync]$ cat rhds-groups-cronjob.yaml 
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: rhds-group-sync
+  namespace: auth-rhds-sync
+spec:
+  schedule: "*/1 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: ldap-group-sync
+              image: "registry.ocp4.example.com:8443/openshift4/ose-cli:v4.12"
+              command:
+                - "/bin/sh"
+                - "-c"
+                - "oc adm groups sync --sync-config=/etc/config/rhds-sync.yaml --confirm"
+              volumeMounts:
+                - mountPath: "/etc/config"
+                  name: "ldap-sync-volume"
+                - mountPath: "/etc/secrets"
+                  name: "ldap-bind-password"
+          volumes:
+            - name: "ldap-sync-volume"
+              configMap:
+                name: "rhds-config"
+            - name: "ldap-bind-password"
+              secret:
+                secretName: rhds-secret
+          serviceAccountName: rhds-group-syncer
+          serviceAccount: rhds-group-syncer
+[student@workstation sync]$
+
+[student@workstation sync]$ oc create -f rhds-groups-cronjob.yaml 
+cronjob.batch/rhds-group-sync created
+[student@workstation sync]$ 
+[student@workstation sync]$ 
+[student@workstation sync]$ 
+[student@workstation sync]$ 
+[student@workstation sync]$ oc get pod
+No resources found in auth-rhds-sync namespace.
+[student@workstation sync]$
+
+[student@workstation sync]$ oc get cronjobs.batch 
+NAME              SCHEDULE      SUSPEND   ACTIVE   LAST SCHEDULE   AGE
+rhds-group-sync   */1 * * * *   False     0        <none>          25s
+[student@workstation sync]$ oc get cronjobs.batch 
+NAME              SCHEDULE      SUSPEND   ACTIVE   LAST SCHEDULE   AGE
+rhds-group-sync   */1 * * * *   False     1        9s              58s
+[student@workstation sync]$ oc get cronjobs.batch 
+NAME              SCHEDULE      SUSPEND   ACTIVE   LAST SCHEDULE   AGE
+rhds-group-sync   */1 * * * *   False     1        13s             62s
+[student@workstation sync]$ oc get pod
+NAME                             READY   STATUS      RESTARTS   AGE
+rhds-group-sync-29098552-wcgt4   0/1     Completed   0          15s
+[student@workstation sync]$
+
+student@workstation sync]$ oc get groups
+NAME                USERS
+Default SMB Group   
+administrators      kristendelgado
+admins              admin
+developer           
+editors             
+ocpadmins           admin
+ocpdevs             developer
+[student@workstation sync]$
+
+[student@workstation sync]$ oc adm policy add-cluster-role-to-group cluster-admin administrators
+clusterrole.rbac.authorization.k8s.io/cluster-admin added: "administrators"
+[student@workstation sync]$ oc login -u kristendelgado -p redhat123
+Login successful.
+
+You have access to 72 projects, the list has been suppressed. You can list all projects with 'oc projects'
+
+Using project "auth-rhds-sync".
+[student@workstation sync]$ oc auth can-i create users -A
+yes
+[student@workstation sync]$ cd
+[student@workstation ~]$ 
+
+
+=============================================
+
+OIDC
+lab start auth-oidc
+===================================================
+
+[student@workstation ~]$ oc login -u admin -p redhatocp   https://api.ocp4.example.com:6443
+Login successful.
+
+You have access to 71 projects, the list has been suppressed. You can list all projects with 'oc projects'
+
+Using project "default".
+[student@workstation ~]$ 
+[student@workstation ~]$ 
+[student@workstation ~]$ 
+[student@workstation ~]$ 
+[student@workstation ~]$ 
+[student@workstation ~]$ oc project auth-oidc 
+Now using project "auth-oidc" on server "https://api.ocp4.example.com:6443".
+[student@workstation ~]$ 
+[student@workstation ~]$ 
+[student@workstation ~]$ 
+[student@workstation ~]$ 
+[student@workstation ~]$ oc adm policy add-cluster-role-to-group view partners
+Warning: Group 'partners' not found
+clusterrole.rbac.authorization.k8s.io/view added: "partners"
+[student@workstation ~]$ oc adm policy add-cluster-role-to-group edit contractors
+Warning: Group 'contractors' not found
+clusterrole.rbac.authorization.k8s.io/edit added: "contractors"
+[student@workstation ~]$ 
+
+[rhsso@sso ~]$ cat rhsso.json 
+{
+  "realm" : "external_providers",
+  "auth-server-url" : "https://sso.ocp4.example.com:8080/auth/",
+  "ssl-required" : "external",
+  "resource" : "ocp_rhsso",
+  "credentials" : {
+    "secret" : "X4ZTPfDr0b8loqOFArfidhaHq85bHyiy"
+  },
+  "confidential-port" : 0
+}[rhsso@sso ~]$
+
+[student@workstation ~]$ oc create secret generic rhsso-oidc-client-secret --from-literal clientSecret=X4ZTPfDr0b8loqOFArfidhaHq85bHyiy -n openshift-config
+secret/rhsso-oidc-client-secret created
+[student@workstation ~]$ 
+
+[student@workstation auth-oidc]$ cat sso_config.yml 
+apiVersion: config.openshift.io/v1
+kind: OAuth
+metadata:
+  name: cluster
+spec:
+  identityProviders:
+  - ldap:
+      attributes:
+        email:
+          - mail
+        id:
+          - dn
+        name:
+          - cn
+        preferredUsername:
+          - uid
+      bindDN: uid=admin,cn=users,cn=accounts,dc=ocp4,dc=example,dc=com
+      bindPassword:
+        name: ldap-secret
+      ca:
+        name: ca-config-map
+      insecure: false
+      url: >-
+        ldap://idm.ocp4.example.com/cn=users,cn=accounts,dc=ocp4,dc=example,dc=com?uid
+    mappingMethod: claim
+    name: Red Hat Identity Management
+    type: LDAP
+  - openID:
+      claims:
+        email:
+          - email
+        name:
+          - name
+        preferredUsername:
+          - preferred_username
+        groups:
+          - groups
+      clientID: ocp_rhsso
+      clientSecret:
+        name: rhsso-oidc-client-secret
+      extraScopes: []
+      issuer: >-
+        https://sso.ocp4.example.com:8080/auth/realms/external_providers
+    mappingMethod: claim
+    name: RHSSO_OIDC
+    type: OpenID
+[student@workstation auth-oidc]$
+
+[student@workstation auth-oidc]$ oc apply -f ~/DO380/labs/auth-oidc/sso_config.yml
+oauth.config.openshift.io/cluster configured
+[student@workstation auth-oidc]$ watch oc get pods -n openshift-authentication
+[student@workstation auth-oidc]$ oc get pod
+No resources found in auth-oidc namespace.
+[student@workstation auth-oidc]$ oc get pods -n openshift-authentication
+NAME                               READY   STATUS    RESTARTS   AGE
+oauth-openshift-5999c8c55f-2qf4l   1/1     Running   0          103s
+oauth-openshift-5999c8c55f-lw6r2   1/1     Running   0          2m7s
+oauth-openshift-5999c8c55f-pvgv7   1/1     Running   0          76s
+[student@workstation auth-oidc]$
+
+[student@workstation auth-oidc]$ oc login -u abbyquincy -p redhat_sso
+Login successful.
+
+You have access to 71 projects, the list has been suppressed. You can list all projects with 'oc projects'
+
+Using project "auth-oidc".
+[student@workstation auth-oidc]$ oc login -u jayalamont -p redhat_sso
+Login successful.
+
+You have access to 71 projects, the list has been suppressed. You can list all projects with 'oc projects'
+
+Using project "auth-oidc".
+[student@workstation auth-oidc]$ oc login -u admin -p redhatocp   https://api.ocp4.example.com:6443
+Login successful.
+
+You have access to 71 projects, the list has been suppressed. You can list all projects with 'oc projects'
+
+Using project "auth-oidc".
+[student@workstation auth-oidc]$ oc get users
+NAME         UID                                    FULL NAME       IDENTITIES
+abbyquincy   515fabb0-910b-4b4a-8def-1f6c9e9bd956   Abby Quincy     RHSSO_OIDC:a175e1b7-6210-40f8-aeda-732021142e84
+admin        982c607f-cb2a-4bfd-a011-d22c470fd69c   Administrator   Red Hat Identity Management:dWlkPWFkbWluLGNuPXVzZXJzLGNuPWFjY291bnRzLGRjPW9jcDQsZGM9ZXhhbXBsZSxkYz1jb20
+jayalamont   4ae8bc82-1d91-436d-82e7-4c93ba21b90d   Jaya Lamont     RHSSO_OIDC:64898122-5875-4418-88ac-c9eeeaa0f409
+[student@workstation auth-oidc]$
+
+
+=======================================
+
+LDAP
+===================================================
+
+[student@workstation ~]$ cd ~/DO380/labs/auth-review/rhds
+[student@workstation rhds]$ oc create secret generic rhds-ldap-secret \
+  --from-literal bindPassword=redhatocp -n openshift-config \
+  --kubeconfig ~/DO380/labs/auth-review/certificate/admin.config
+secret/rhds-ldap-secret created
+[student@workstation rhds]$ oc create configmap rhds-ca-config-map \
+  --from-file ca.crt=rhds_ca.crt -n openshift-config \
+  --kubeconfig ~/DO380/labs/auth-review/certificate/admin.config
+configmap/rhds-ca-config-map created
+
+
+[student@workstation rhds]$ 
+
+[student@workstation rhds]$ cat rhds-ldap-idp.yaml 
+apiVersion: config.openshift.io/v1
+kind: OAuth
+metadata:
+  name: cluster
+spec:
+  identityProviders:
+  - ldap:
+      attributes:
+        id:
+          - dn
+        email:
+          - mail
+        name:
+          - cn
+        preferredUsername:
+          - uid
+      bindDN: 'cn=Directory Manager'
+      bindPassword:
+        name: rhds-ldap-secret
+      ca:
+        name: rhds-ca-config-map
+      insecure: false
+      url: >-
+        ldaps://rhds.ocp4.example.com/dc=example,dc=com?uid
+    mappingMethod: claim
+    name: Red Hat Directory Server
+    type: LDAP
+    
+    
+[student@workstation rhds]$ oc apply -f rhds-ldap-idp.yaml \
+  --kubeconfig ~/DO380/labs/auth-review/certificate/admin.config
+oauth.config.openshift.io/cluster configured
+[student@workstation rhds]$
+
+
+[student@workstation rhds]$ oc get pods -n openshift-authentication   --kubeconfig ~/DO380/labs/auth-review/certificate/admin.config
+NAME                               READY   STATUS    RESTARTS   AGE
+oauth-openshift-5b99dc76f7-bzr55   1/1     Running   0          56s
+oauth-openshift-5b99dc76f7-lwj2n   0/1     Running   0          28s
+oauth-openshift-75f5dcfbc8-m47c6   1/1     Running   0          9m45s
+[student@workstation rhds]$ 
+
+[student@workstation rhds]$ oc get pods -n openshift-authentication   --kubeconfig ~/DO380/labs/auth-review/certificate/admin.config
+NAME                               READY   STATUS    RESTARTS   AGE
+oauth-openshift-5b99dc76f7-bzr55   1/1     Running   0          86s
+oauth-openshift-5b99dc76f7-j6jww   1/1     Running   0          29s
+oauth-openshift-5b99dc76f7-lwj2n   1/1     Running   0          58s
+[student@workstation rhds]$ 
+
+
+[student@workstation rhds]$ oc login -u paydentomcheck -p redhat123 \
+  https://api.ocp4.example.com:6443
+Login successful.
+
+You don't have any projects. You can try to create a new project, by running
+
+    oc new-project <projectname>
+
+Welcome! See 'oc help' to get started.
+[student@workstation rhds]$
+
+
+[student@workstation group-sync]$ oc new-project auth-ldapsync \
+  --kubeconfig ~/DO380/labs/auth-review/certificate/admin.config
+Now using project "auth-ldapsync" on server "https://api.ocp4.example.com:6443".
+
+You can add applications to this project with the 'new-app' command. For example, try:
+
+    oc new-app rails-postgresql-example
+
+to build a new example application in Ruby. Or use kubectl to deploy a simple Kubernetes application:
+
+    kubectl create deployment hello-node --image=registry.k8s.io/e2e-test-images/agnhost:2.43 -- /agnhost serve-hostname
+
+[student@workstation group-sync]$
+
+[student@workstation group-sync]$ oc new-project auth-ldapsync \
+  --kubeconfig ~/DO380/labs/auth-review/certificate/admin.config
+Now using project "auth-ldapsync" on server "https://api.ocp4.example.com:6443".
+
+You can add applications to this project with the 'new-app' command. For example, try:
+
+    oc new-app rails-postgresql-example
+
+to build a new example application in Ruby. Or use kubectl to deploy a simple Kubernetes application:
+
+    kubectl create deployment hello-node --image=registry.k8s.io/e2e-test-images/agnhost:2.43 -- /agnhost serve-hostname
+
+[student@workstation group-sync]$ oc create sa ldap-group-syncer \
+  --kubeconfig ~/DO380/labs/auth-review/certificate/admin.config
+serviceaccount/ldap-group-syncer created
+
+[student@workstation group-sync]$ oc create clusterrole ldap-group-syncer \
+  --verb get,list,create,update --resource groups \
+  --kubeconfig ~/DO380/labs/auth-review/certificate/admin.config
+clusterrole.rbac.authorization.k8s.io/ldap-group-syncer created
+
+[student@workstation group-sync]$ oc adm policy add-cluster-role-to-user \
+  ldap-group-syncer -z ldap-group-syncer \
+  --kubeconfig ~/DO380/labs/auth-review/certificate/admin.config
+clusterrole.rbac.authorization.k8s.io/ldap-group-syncer added: "ldap-group-syncer"
+
+[student@workstation group-sync]$ oc create secret generic ldap-secret \
+  --from-literal bindPassword='redhatocp' \
+  --kubeconfig ~/DO380/labs/auth-review/certificate/admin.config
+secret/ldap-secret created
+[student@workstation group-sync]$
+
+[student@workstation group-sync]$ cat ldap-sync.yaml 
+kind: LDAPSyncConfig
+apiVersion: v1
+url: ldaps://rhds.ocp4.example.com:636
+bindDN: 'cn=Directory Manager'
+bindPassword:
+  file: /etc/secrets/bindPassword
+ca: /etc/config/ca.crt
+augmentedActiveDirectory:
+    groupsQuery:
+        baseDN: "ou=people,dc=example,dc=com"
+        scope: sub
+        derefAliases: never
+        pageSize: 0
+    groupUIDAttribute: dn
+    groupNameAttributes: [ cn ]
+    usersQuery:
+        baseDN: "ou=people,dc=example,dc=com"
+        scope: sub
+        derefAliases: never
+        filter: (objectclass=account)
+        pageSize: 0
+    userNameAttributes: [ uid ]
+    groupMembershipAttributes: [ memberOf ]
+[student@workstation group-sync]$ oc create configmap ldap-config \
+  --from-file ldap-sync.yaml=ldap-sync.yaml,ca.crt=rhds_ca.crt \
+  --kubeconfig ~/DO380/labs/auth-review/certificate/admin.config
+configmap/ldap-config created
+
+
+[student@workstation group-sync]$ cat rhds-groups-cronjob.yaml 
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: group-sync
+  namespace: auth-ldapsync
+spec:
+  schedule: "*/1 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: ldap-group-sync
+              image: "registry.ocp4.example.com:8443/openshift4/ose-cli:v4.12"
+              command:
+                - "/bin/sh"
+                - "-c"
+                - "oc adm groups sync --sync-config=/etc/config/ldap-sync.yaml --confirm"
+              volumeMounts:
+                - mountPath: "/etc/config"
+                  name: "ldap-sync-volume"
+                - mountPath: "/etc/secrets"
+                  name: "ldap-bind-password"
+          volumes:
+            - name: "ldap-sync-volume"
+              configMap:
+                name: "ldap-config"
+            - name: "ldap-bind-password"
+              secret:
+                secretName: "ldap-secret"
+          serviceAccountName: ldap-group-syncer
+          serviceAccount: ldap-group-syncer
+[student@workstation group-sync]$
+
+[student@workstation group-sync]$ oc create -f rhds-groups-cronjob.yaml \
+  --kubeconfig ~/DO380/labs/auth-review/certificate/admin.config
+cronjob.batch/group-sync created
+[student@workstation group-sync]$
+
+
+[student@workstation group-sync]$ oc get pods -n auth-ldapsync 
+NAME                        READY   STATUS      RESTARTS   AGE
+group-sync-29098593-v22ms   0/1     Completed   0          35s
+[student@workstation group-sync]$ oc get groups
+NAME                USERS
+Default SMB Group   
+administrators      paydentomcheck
+admins              admin
+developer           
+editors             
+ocpadmins           admin
+ocpdevs             developer
+[student@workstation group-sync]
+
+student@workstation group-sync]$ oc adm policy add-cluster-role-to-group \
+  cluster-admin administrators \
+  --kubeconfig ~/DO380/labs/auth-review/certificate/admin.config
+clusterrole.rbac.authorization.k8s.io/cluster-admin added: "administrators"
+[student@workstation group-sync]$ oc login -u paydentomcheck -p redhat123
+Login successful.
+
+You have access to 72 projects, the list has been suppressed. You can list all projects with 'oc projects'
+
+Using project "default".
+[student@workstation group-sync]$ oc auth can-i create users -A
+yes
+[student@workstation group-sync]$ 
+
+[rhsso@sso ~]$ cat rhsso.json 
+{
+  "realm" : "external_providers",
+  "auth-server-url" : "https://sso.ocp4.example.com:8080/auth/",
+  "ssl-required" : "external",
+  "resource" : "ocp_rhsso",
+  "credentials" : {
+    "secret" : "X4ZTPfDr0b8loqOFArfidhaHq85bHyiy"
+  },
+  "confidential-port" : 0
+}[rhsso@sso ~]$ exit
+logout
+Connection to sso.ocp4.example.com closed.
+[student@workstation group-sync]$
+
+student@workstation group-sync]$ oc login -u paydentomcheck -p redhat123 \
+  https://api.ocp4.example.com:6443
+Login successful.
+
+You have access to 72 projects, the list has been suppressed. You can list all projects with 'oc projects'
+
+Using project "default".
+[student@workstation group-sync]$ oc create secret generic rhsso-oidc-client-secret \
+  --from-literal clientSecret=X4ZTPfDr0b8loqOFArfidhaHq85bHyiy \
+  -n openshift-config
+secret/rhsso-oidc-client-secret created
+[student@workstation group-sync]$ oc edit oauth cluster
+
+[student@workstation group-sync]$ oc edit oauth cluster
+Edit cancelled, no changes made.
+[student@workstation group-sync]$ oc get oauth cluster -oyaml
+apiVersion: config.openshift.io/v1
+kind: OAuth
+metadata:
+  annotations:
+    include.release.openshift.io/ibm-cloud-managed: "true"
+    include.release.openshift.io/self-managed-high-availability: "true"
+    include.release.openshift.io/single-node-developer: "true"
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"config.openshift.io/v1","kind":"OAuth","metadata":{"annotations":{},"name":"cluster"},"spec":{"identityProviders":[{"ldap":{"attributes":{"email":["mail"],"id":["dn"],"name":["cn"],"preferredUsername":["uid"]},"bindDN":"cn=Directory Manager","bindPassword":{"name":"rhds-ldap-secret"},"ca":{"name":"rhds-ca-config-map"},"insecure":false,"url":"ldaps://rhds.ocp4.example.com/dc=example,dc=com?uid"},"mappingMethod":"claim","name":"Red Hat Directory Server","type":"LDAP"}]}}
+    release.openshift.io/create-only: "true"
+  creationTimestamp: "2024-03-05T20:01:00Z"
+  generation: 10
+  name: cluster
+  ownerReferences:
+  - apiVersion: config.openshift.io/v1
+    kind: ClusterVersion
+    name: version
+    uid: 00d0759a-42b8-4292-814d-60e8ba2fd1e9
+  resourceVersion: "288151"
+  uid: ab10172d-b281-41cc-9fef-4d1f908a44db
+spec:
+  identityProviders:
+  - ldap:
+      attributes:
+        email:
+        - mail
+        id:
+        - dn
+        name:
+        - cn
+        preferredUsername:
+        - uid
+      bindDN: cn=Directory Manager
+      bindPassword:
+        name: rhds-ldap-secret
+      ca:
+        name: rhds-ca-config-map
+      insecure: false
+      url: ldaps://rhds.ocp4.example.com/dc=example,dc=com?uid
+    mappingMethod: claim
+    name: Red Hat Directory Server
+    type: LDAP
+  - mappingMethod: claim
+    name: RHSSO_OIDC
+    openID:
+      claims:
+        email:
+        - email
+        groups:
+        - groups
+        name:
+        - name
+        preferredUsername:
+        - preferred_username
+      clientID: ocp_rhsso
+      clientSecret:
+        name: rhsso-oidc-client-secret
+      extraScopes: []
+      issuer: https://sso.ocp4.example.com:8080/auth/realms/external_providers
+    type: OpenID
+[student@workstation group-sync]$ 
+
+
+[student@workstation group-sync]$ oc get pods -n openshift-authentication
+NAME                               READY   STATUS        RESTARTS   AGE
+oauth-openshift-5b99dc76f7-j6jww   1/1     Terminating   0          13m
+oauth-openshift-7c766f8fcf-7s4g2   0/1     Pending       0          2s
+oauth-openshift-7c766f8fcf-p7jgk   1/1     Running       0          50s
+oauth-openshift-7c766f8fcf-xpvr2   1/1     Running       0          30s
+[student@workstation group-sync]$
+
+[student@workstation group-sync]$ oc get pods -n openshift-authentication
+NAME                               READY   STATUS    RESTARTS   AGE
+oauth-openshift-7c766f8fcf-7s4g2   1/1     Running   0          29s
+oauth-openshift-7c766f8fcf-p7jgk   1/1     Running   0          77s
+oauth-openshift-7c766f8fcf-xpvr2   1/1     Running   0          57s
+[student@workstation group-sync]$ 
+
+
+[student@workstation group-sync]$ oc login -u laurenchan -p redhat_sso
+Login successful.
+
+You don't have any projects. You can try to create a new project, by running
+
+    oc new-project <projectname>
+
+[student@workstation group-sync]$ oc login -u paydentomcheck -p redhat123
+Login successful.
+
+You have access to 72 projects, the list has been suppressed. You can list all projects with 'oc projects'
+
+Using project "default".
+[student@workstation group-sync]$ oc get users
+NAME             UID                                    FULL NAME         IDENTITIES
+laurenchan       1f65bab8-7537-4e7b-a50f-48ed05c693b5   Lauren Chan       RHSSO_OIDC:a175e1b7-6210-40f8-aeda-732021142e84
+paydentomcheck   05a70131-6a30-4645-ac87-beefc3be0fe9   Payden Tomcheck   Red Hat Directory Server:dWlkPXBheWRlbnRvbWNoZWNrLG91PXBlb3BsZSxkYz1leGFtcGxlLGRjPWNvbQ
+[student@workstation group-sync]$
+======================================================
+
