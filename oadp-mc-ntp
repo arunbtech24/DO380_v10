@@ -1,0 +1,465 @@
+============
+Backup and restore
+==========================
+student@workstation ~]$ oc get pvc,svc,deployment,cm -l app=mariadb
+NAME                            STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS                           AGE
+persistentvolumeclaim/mariadb   Bound    pvc-8e72a5d8-c75a-48bc-a6de-6098c03e5a68   1Gi        RWO            ocs-external-storagecluster-ceph-rbd   2m30s
+
+NAME              TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
+service/mariadb   LoadBalancer   172.30.249.34   <pending>     3306:31302/TCP   2m28s
+
+NAME                      READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/mariadb   1/1     1            1           2m27s
+
+NAME                 DATA   AGE
+configmap/database   1      2m31s
+[student@workstation ~]$ cd ~/DO380/labs/backup-restore
+[student@workstation backup-restore]$ vi backup-db-manual.yml 
+[student@workstation backup-restore]$ vi backup-db-manual.yml 
+[student@workstation backup-restore]$ cat backup-db-manual.yml 
+apiVersion: velero.io/v1
+kind: Backup
+metadata:
+  name: db-manual
+  namespace: openshift-adp
+spec:
+  includedNamespaces:
+  - database
+  orLabelSelectors:
+  - matchLabels:
+      app: mariadb
+  - matchLabels:
+      kubernetes.io/metadata.name: database
+  includedResources:
+  - namespace
+  - deployments
+  - services
+  - configmaps
+  - secrets
+  - pvc
+
+[student@workstation backup-restore]$ oc apply -f backup-db-manual.yml
+backup.velero.io/db-manual created
+[student@workstation backup-restore]$ 
+
+
+[student@workstation backup-restore]$ alias velero='oc -n openshift-adp exec deployment/velero -c velero -it -- ./velero'
+[student@workstation backup-restore]$ velero get backup
+NAME        STATUS      ERRORS   WARNINGS   CREATED                         EXPIRES   STORAGE LOCATION   SELECTOR
+db-manual   Completed   0        0          2025-04-30 06:43:13 +0000 UTC   29d       oadp-backup-1      <none>
+[student@workstation backup-restore]$ 
+
+
+student@workstation backup-restore]$ vi restore-db-crash.yml 
+[student@workstation backup-restore]$ cat restore-db-crash.yml 
+apiVersion: velero.io/v1
+kind: Restore
+metadata:
+  name: db-crash
+  namespace: openshift-adp
+spec:
+  backupName: db-manual
+  restorePVs: true
+  namespaceMapping:
+    database: database-crash
+[student@workstation backup-restore]$ oc apply -f restore-db-crash.yml 
+restore.velero.io/db-crash created
+[student@workstation backup-restore]$ velero get restore
+NAME       BACKUP      STATUS                       STARTED                         COMPLETED   ERRORS   WARNINGS   CREATED                         SELECTOR
+db-crash   db-manual   WaitingForPluginOperations   2025-04-30 06:46:34 +0000 UTC   <nil>       0        1          2025-04-30 06:46:34 +0000 UTC   <none>
+[student@workstation backup-restore]
+
+[student@workstation backup-restore]$ velero get restore
+NAME       BACKUP      STATUS      STARTED                         COMPLETED                       ERRORS   WARNINGS   CREATED                         SELECTOR
+db-crash   db-manual   Completed   2025-04-30 06:46:34 +0000 UTC   2025-04-30 06:47:04 +0000 UTC   0        1          2025-04-30 06:46:34 +0000 UTC   <none>
+[student@workstation backup-restore]$
+
+[student@workstation backup-restore]$ oc get all -n database-crash 
+Warning: apps.openshift.io/v1 DeploymentConfig is deprecated in v4.14+, unavailable in v4.10000+
+NAME                         READY   STATUS    RESTARTS   AGE
+pod/mariadb-95d4f784-cfxf9   1/1     Running   0          71s
+
+NAME              TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
+service/mariadb   LoadBalancer   172.30.63.190   <pending>     3306:30038/TCP   71s
+
+NAME                      READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/mariadb   1/1     1            1           71s
+
+NAME                               DESIRED   CURRENT   READY   AGE
+replicaset.apps/mariadb-95d4f784   1         1         1       71s
+[student@workstation backup-restore]$
+
+======================================
+credentials-velero  mediawiki.yml  mw_logo.png  oadp-config.yml  restore.yml  schedule.yml
+[student@workstation backup-review]$ oc create secret generic cloud-credentials --from-file cloud=credentials-velero 
+error: failed to create secret namespaces "database" not found
+
+[student@workstation backup-review]$ oc project openshift-adp
+Already on project "openshift-adp" on server "https://api.ocp4.example.com:6443".
+[student@workstation backup-review]$ oc create secret generic cloud-credentials --from-file cloud=credentials-velero 
+secret/cloud-credentials created
+[student@workstation backup-review]$
+
+[student@workstation backup-review]$ vi oadp-config.yml 
+[student@workstation backup-review]$ cat oadp-config.yml 
+apiVersion: oadp.openshift.io/v1alpha1
+kind: DataProtectionApplication
+metadata:
+  name: oadp-config
+  namespace: openshift-adp
+spec:
+  backupLocations:
+  - velero:
+      config:
+        insecureSkipTLSVerify: 'true'
+        profile: default
+        region: us-east-1
+        s3ForcePathStyle: 'true'
+        s3Url: https://s3.openshift-storage.svc
+      credential:
+        key: cloud
+        name: cloud-credentials
+      default: true
+      objectStorage:
+        bucket: backup-76f5504b-7bd3-490d-a44d-b9358110c525
+        caCert: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURVVENDQWptZ0F3SUJBZ0lJS2o2N1p1NWZVbEV3RFFZSktvWklodmNOQVFFTEJRQXdOakUwTURJR0ExVUUKQXd3cmIzQmxibk5vYVdaMExYTmxjblpwWTJVdGMyVnlkbWx1WnkxemFXZHVaWEpBTVRjd09UWTJPVEE0TnpBZQpGdzB5TlRBME1qa3dOekUyTkRsYUZ3MHlOekEyTWpnd056RTJOVEJhTURZeE5EQXlCZ05WQkFNTUsyOXdaVzV6CmFHbG1kQzF6WlhKMmFXTmxMWE5sY25acGJtY3RjMmxuYm1WeVFERTNNRGsyTmprd09EY3dnZ0VpTUEwR0NTcUcKU0liM0RRRUJBUVVBQTRJQkR3QXdnZ0VLQW9JQkFRQ3lLK092cXNpZlBDSEJWMnkyeTdqQXY2RWdsSmNoMjRCaApFanprNmxsZWpTeHA0L3ZuVzFmUE1mdlZpTTRnMkx4SkRKU3grMDhod28zY2JsRWlvUFBKOXlObXhuZ1R2YjJ6CjkrSzF4YVVhb3dxTHhhYkNkVVY4SWxmMFJyUnk2QnlGN0p6V2lOL2hyR3kzMTBMeXlJZUtWZ0ZrdnB3SXRvdWUKSHM5Q1RCMlFPcDQ4U3Vnd3VUT0YxUEhmVDIzTzlyNitNYitkRG9YdGxRTGx5WmhqNzNORTcyankxWUdDZUYrQgpuZzROZXE2dFFxT1JGRkpQNXlmV3JqaEdmS2hrVWdnMWV2dHhsTU5ONjlTUzBRbjQvY0hUMmtYcW5pUTM2M2UvCmQ0WG9INWY2Y29TTGE0QlFXcmJnTCt2bHFxQkx6alBVZEZKbjJrdjhJN3R5ZHRuU1hiY1ZBZ01CQUFHall6QmgKTUE0R0ExVWREd0VCL3dRRUF3SUNwREFQQmdOVkhSTUJBZjhFQlRBREFRSC9NQjBHQTFVZERnUVdCQlRJdmF5ZApZQzFWbDRUQ1VuTWovQkVIa25HUWl6QWZCZ05WSFNNRUdEQVdnQlRJdmF5ZFlDMVZsNFRDVW5Nai9CRUhrbkdRCml6QU5CZ2txaGtpRzl3MEJBUXNGQUFPQ0FRRUFxYUY4T3A3TWd5elIxKy9sMHBhSElZcVJFSXF0UXNDRjhBdEoKR2o5VzVHazd2Zlh4QVNONERVbjBXUFN3aWxjZnFrMy9tMnJzQ3lpbTBTd0dGWndHeTdUSzBWNVp6WGkrcWhldApZSUJWRFAzK3JvVGJKb09BZkRnRitqNGxIL1lHVTdiNWRaTkJ4dktHendjUDczTXNlOEtYeDBZaGRoL2Q1Vy9ICk9wSUYrbVJmRDJIZzk1OTRNWTVXOW01K29BYzNNTi9PTTk3N2hJSWlSRHRvL2R1TXBPN1FHTVpKV0pENzRsWDgKTlJnN3JzWlJFYW1oVGxJZnhrWi9LNm5OVWcwd3VVR2M2dVd4NHM3MFdyVnpwR0FicHZUUzlvSGM2Y1VDbmV2MQpuU0pqdWx3TVJodkZUMEt3WG1SK2ZkbjVLSlhJYlVUOXdCVUFtSGpTVjUrV0tDQWNPUT09Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0KLS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURVVENDQWptZ0F3SUJBZ0lJSUkyT3NHVnE2RDR3RFFZSktvWklodmNOQVFFTEJRQXdOakUwTURJR0ExVUUKQXd3cmIzQmxibk5vYVdaMExYTmxjblpwWTJVdGMyVnlkbWx1WnkxemFXZHVaWEpBTVRjd09UWTJPVEE0TnpBZQpGdzB5TkRBek1EVXlNREEwTkRkYUZ3MHlOakExTWprd056RTJOVEJhTURZeE5EQXlCZ05WQkFNTUsyOXdaVzV6CmFHbG1kQzF6WlhKMmFXTmxMWE5sY25acGJtY3RjMmxuYm1WeVFERTNNRGsyTmprd09EY3dnZ0VpTUEwR0NTcUcKU0liM0RRRUJBUVVBQTRJQkR3QXdnZ0VLQW9JQkFRQy82MjJvU25OR2EwZjdZaVBzSWtxVW5pTk9LNUM5YzN3QwoxK1RhaHY0TFpvM1FSWlVGU0laTlZXOUtlL0xQa2NoSldwM2VOK05QL28xTUsvK25GSm5ZMmpiQ3ROU2Y1K0NvCmYrSTVzL0xySmErZE4xRHdGT1JFS01oMGJld0RqL3J2WHFhTFgvR2tESFZPOHQvY1B5YVZFcjV6SU9hS1FoUWMKTFRyQWxmTUo3YzZSSVFrWmpRRVVZdVZRdm1CdTB1T2FOSTViRWVBL0JjYVJmY0FqOUZLYTZrM3Vpb1B0ZXBBTgpvWW1ZekdMUjZocXk5Ylp2Y3RyRGQvQzhGNGUxSnUxcGVUbWpHVVIwOHVaMk43VS9QTGxxVnhyY29OcytsUEcxCkJCakpMYkFTZkdDN0EvTXBFK3Z1T1NVdnVsT0NRUXZLWi9uWlNKL2UycW9oc2Y2aVpoT1BBZ01CQUFHall6QmgKTUE0R0ExVWREd0VCL3dRRUF3SUNwREFQQmdOVkhSTUJBZjhFQlRBREFRSC9NQjBHQTFVZERnUVdCQlQ5RHc4Mwp1NDRtRkdQQnJ3SUVwZlNNZGxtTVZqQWZCZ05WSFNNRUdEQVdnQlRJdmF5ZFlDMVZsNFRDVW5Nai9CRUhrbkdRCml6QU5CZ2txaGtpRzl3MEJBUXNGQUFPQ0FRRUFucGRIUVpNTkdSSjRpYmxxTTBZYzFJb2gvZ2N0U1g2M3dPcGwKVjdxNVl6bzBlOFdyYXQxVGtub2M3aFFUUTNkYXcvQWRnZGVOQW1qazN3Zkp2UGZOMnpTdFZGcVpVYmx5SmRyNAoyRk8yb2cxaXpHM1FTNGlhMDlmUVQrZTlaYVFOZ3Qycml0T21XZnowcHplbnduSzBMZGxFZWhHWW1Oay84cFl5Ckswb3piaGVnTnVNWFRkeUhML0graG5haGIza3pScUhnVkp4M2xMck50UmZoV0tKNzg2UGFNTVpEaUMzM2hJaTQKcExmc09NUExUa2V1Q3VlV21ncWU5OE1IVE9rT1NvWXZtVThlSzFpd2JEY01odzVSUDdaWGkxK0x6Ym1vS1JxLwpvVmZvUmlSdWpFUEppbi9jZ3RGMCtXbXowT0x4Z1hWdHRzZTJGOC95eHhSS1ZjaWFtZz09Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+        prefix: oadp
+      provider: aws
+  configuration:
+    nodeAgent:
+      enable: true
+      uploaderType: kopia
+    velero:
+      defaultPlugins:
+        - openshift
+        - aws
+        - csi
+      defaultSnapshotMoveData: true
+[student@workstation backup-review]$
+
+[student@workstation backup-review]$ oc apply -f oadp-config.yml
+dataprotectionapplication.oadp.openshift.io/oadp-config created
+[student@workstation backup-review]$ oc get all
+Warning: apps.openshift.io/v1 DeploymentConfig is deprecated in v4.14+, unavailable in v4.10000+
+NAME                                                    READY   STATUS     RESTARTS   AGE
+pod/node-agent-8wxlq                                    1/1     Running    0          4s
+pod/node-agent-lrg5g                                    1/1     Running    0          4s
+pod/node-agent-ngfzz                                    1/1     Running    0          4s
+pod/openshift-adp-controller-manager-7bddcd96f5-8fkm8   1/1     Running    0          7m41s
+pod/velero-f4d447ddf-jk27m                              0/1     Init:0/3   0          4s
+
+NAME                                                       TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+service/openshift-adp-controller-manager-metrics-service   ClusterIP   172.30.171.95   <none>        8443/TCP   7m47s
+service/openshift-adp-velero-metrics-svc                   ClusterIP   172.30.111.78   <none>        8085/TCP   4s
+
+NAME                        DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
+daemonset.apps/node-agent   3         3         3       3            3           <none>          4s
+
+NAME                                               READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/openshift-adp-controller-manager   1/1     1            1           7m41s
+deployment.apps/velero                             0/1     1            0           4s
+
+NAME                                                          DESIRED   CURRENT   READY   AGE
+replicaset.apps/openshift-adp-controller-manager-7bddcd96f5   1         1         1       7m41s
+replicaset.apps/velero-f4d447ddf                              1         1         0       4s
+[student@workstation backup-review]$ 
+
+[student@workstation backup-review]$ oc get backupstoragelocation
+NAME            PHASE   LAST VALIDATED   AGE   DEFAULT
+oadp-config-1                            32s   true
+[student@workstation backup-review]$ oc get backupstoragelocation
+NAME            PHASE       LAST VALIDATED   AGE   DEFAULT
+oadp-config-1   Available   5s               42s   true
+[student@workstation backup-review]$ 
+
+
+====================
+ntp - machineconfig
+=======================================
+[student@workstation ~]$ oc project nodes-mco 
+Now using project "nodes-mco" on server "https://api.ocp4.example.com:6443".
+[student@workstation ~]$ oc get node
+NAME       STATUS   ROLES                  AGE    VERSION
+master01   Ready    control-plane,master   420d   v1.27.10+28ed2d7
+master02   Ready    control-plane,master   420d   v1.27.10+28ed2d7
+master03   Ready    control-plane,master   420d   v1.27.10+28ed2d7
+worker01   Ready    worker                 348d   v1.27.10+28ed2d7
+worker02   Ready    worker                 348d   v1.27.10+28ed2d7
+worker03   Ready    worker                 348d   v1.27.10+28ed2d7
+[student@workstation ~]$ oc get mc | grep worker
+00-worker                                          4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+01-worker-container-runtime                        4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+01-worker-kubelet                                  4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+97-worker-generated-kubelet                        4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+98-worker-generated-kubelet                        4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+99-worker-chrony-conf-override                                                                3.2.0             420d
+99-worker-generated-registries                     4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+99-worker-ssh                                                                                 3.2.0             420d
+rendered-worker-1bfe181f41021d64c1715519c461c69f   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+rendered-worker-2241705007a7b63ebc2d6f684b6bb4db   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+rendered-worker-30f7bff7b3e628d1ee5b3163c3943a23   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+rendered-worker-42d949d586fc6e308bc9ca792aa69c83   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+rendered-worker-5127ec2581afde3745ff4191a49f5cb3   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             348d
+rendered-worker-5f66ff360c0739a46b6a7eb9558abe2c   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+rendered-worker-f9d6dc8f628f90c934f06ffc3b917210   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             348d
+[student@workstation ~]$
+
+[student@workstation ~]$ oc get machineconfig \
+  -l machineconfiguration.openshift.io/role=custom
+No resources found
+[student@workstation ~]$ oc label node/worker01 node-role.kubernetes.io/custom=
+node/worker01 labeled
+[student@workstation ~]$ oc get node
+NAME       STATUS   ROLES                  AGE    VERSION
+master01   Ready    control-plane,master   420d   v1.27.10+28ed2d7
+master02   Ready    control-plane,master   420d   v1.27.10+28ed2d7
+master03   Ready    control-plane,master   420d   v1.27.10+28ed2d7
+worker01   Ready    custom,worker          348d   v1.27.10+28ed2d7
+worker02   Ready    worker                 348d   v1.27.10+28ed2d7
+worker03   Ready    worker                 348d   v1.27.10+28ed2d7
+[student@workstation ~]$
+
+student@workstation nodes-mco]$ ls
+99-zcustom-chrony.yml  chrony-mod.conf  custom-mcp.yml
+[student@workstation nodes-mco]$ oc get mcp
+NAME     CONFIG                                             UPDATED   UPDATING   DEGRADED   MACHINECOUNT   READYMACHINECOUNT   UPDATEDMACHINECOUNT   DEGRADEDMACHINECOUNT   AGE
+master   rendered-master-d43dca52d4ad52fa14aaf3eb2fa799f9   True      False      False      3              3                   3                     0                      420d
+worker   rendered-worker-f9d6dc8f628f90c934f06ffc3b917210   True      False      False      3              3                   3                     0                      420d
+[student@workstation nodes-mco]$ vi custom-mcp.yml
+[student@workstation nodes-mco]$ cat custom-mcp.yml 
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfigPool
+metadata:
+  name: custom
+spec:
+  machineConfigSelector:
+    matchExpressions:
+      - key: machineconfiguration.openshift.io/role
+        operator: In
+        values: [worker,custom]
+  nodeSelector:
+    matchLabels:
+      node-role.kubernetes.io/custom: ""
+[student@workstation nodes-mco]$ 
+
+
+
+[student@workstation nodes-mco]$ oc create -f custom-mcp.yml
+machineconfigpool.machineconfiguration.openshift.io/custom created
+[student@workstation nodes-mco]$ oc get mcp
+NAME     CONFIG                                             UPDATED   UPDATING   DEGRADED   MACHINECOUNT   READYMACHINECOUNT   UPDATEDMACHINECOUNT   DEGRADEDMACHINECOUNT   AGE
+custom                                                                                                                                                                      5s
+master   rendered-master-d43dca52d4ad52fa14aaf3eb2fa799f9   True      False      False      3              3                   3                     0                      420d
+worker   rendered-worker-f9d6dc8f628f90c934f06ffc3b917210   True      False      False      3              3                   3                     0                      420d
+[student@workstation nodes-mco]$ 
+[student@workstation nodes-mco]$ oc get mcp
+NAME     CONFIG                                             UPDATED   UPDATING   DEGRADED   MACHINECOUNT   READYMACHINECOUNT   UPDATEDMACHINECOUNT   DEGRADEDMACHINECOUNT   AGE
+custom                                                      False     True       False      1              0                   0                     0                      20s
+master   rendered-master-d43dca52d4ad52fa14aaf3eb2fa799f9   True      False      False      3              3                   3                     0                      420d
+worker   rendered-worker-f9d6dc8f628f90c934f06ffc3b917210   True      False      False      2              2                   2                     0                      420d
+[student@workstation nodes-mco]$
+
+[student@workstation nodes-mco]$ oc get mcp
+NAME     CONFIG                                             UPDATED   UPDATING   DEGRADED   MACHINECOUNT   READYMACHINECOUNT   UPDATEDMACHINECOUNT   DEGRADEDMACHINECOUNT   AGE
+custom   rendered-custom-f9d6dc8f628f90c934f06ffc3b917210   True      False      False      1              1                   1                     0                      36s
+master   rendered-master-d43dca52d4ad52fa14aaf3eb2fa799f9   True      False      False      3              3                   3                     0                      420d
+worker   rendered-worker-f9d6dc8f628f90c934f06ffc3b917210   True      False      False      2              2                   2                     0                      420d
+[student@workstation nodes-mco]$ 
+
+[student@workstation nodes-mco]$ ls
+99-zcustom-chrony.yml  chrony-mod.conf  custom-mcp.yml
+[student@workstation nodes-mco]$ base64 chrony-mod.conf -w0;echo
+cG9vbCAwLnJoZWwucG9vbC5udHAub3JnIGlidXJzdApkcmlmdGZpbGUgL3Zhci9saWIvY2hyb255L2RyaWZ0Cm1ha2VzdGVwIDEuMCAzCnJ0Y3N5bmMKbG9nZGlyIC92YXIvbG9nL2Nocm9ueQo=
+[student@workstation nodes-mco]$ 
+
+
+[student@workstation nodes-mco]$ oc get mc 99-worker-chrony-conf-override -oyaml
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  creationTimestamp: "2024-03-05T20:27:43Z"
+  generation: 1
+  labels:
+    machineconfiguration.openshift.io/role: worker
+  name: 99-worker-chrony-conf-override
+  resourceVersion: "32962"
+  uid: 53a79410-bbe0-4d5f-a9cf-2406b81e6469
+spec:
+  config:
+    ignition:
+      version: 3.2.0
+    storage:
+      files:
+      - contents:
+          compression: gzip
+          source: data:;base64,H4sIAAAAAAAC/1zPwUoEMQyA4XueIuC9M6OIsFfP4sUXyLbZtkzbLEl2dd5eRgcEj8kPH8kDfhTGN4qlDsZXGZea8f3KSi6KnQZlNvRSDS+1cQBjvbNibGSmIj3wF/Vr4xClYz3f1BwBzJX81j+55uI4Q9J68R3A6U46tXqeYlEZ2/RTQD3aNiJ0Wtmcr7jM+ATnOlLsiVJSNsPl8SXMYQ7L/3A6LbDy9uuzx8MOK28GUXqnkVbecIHMY3+N/5YwJLbKw5tkaJJjoZEZ5/C8T6nqcbHkQ4XvAAAA//+K1bKfMwEAAA==
+        mode: 420
+        overwrite: true
+        path: /etc/chrony.conf
+[student@workstation nodes-mco]$ ls
+99-zcustom-chrony.yml  chrony-mod.conf  custom-mcp.yml
+[student@workstation nodes-mco]$ vi 99-zcustom-chrony.yml 
+[student@workstation nodes-mco]$ vi 99-zcustom-chrony.yml 
+[student@workstation nodes-mco]$ 
+
+[student@workstation nodes-mco]$ cat 99-zcustom-chrony.yml 
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  labels:
+    machineconfiguration.openshift.io/role: custom
+  name: 99-zcustom-chrony
+spec:
+  config:
+    ignition:
+      version: 3.2.0
+    storage:
+      files:
+        - contents:
+            compression: ""
+            source: data:;base64,cG9vbCAwLnJoZWwucG9vbC5udHAub3JnIGlidXJzdApkcmlmdGZpbGUgL3Zhci9saWIvY2hyb255L2RyaWZ0Cm1ha2VzdGVwIDEuMCAzCnJ0Y3N5bmMKbG9nZGlyIC92YXIvbG9nL2Nocm9ueQo=
+          mode: 420
+          overwrite: true
+          path: /etc/chrony.conf
+[student@workstation nodes-mco]$
+
+[student@workstation nodes-mco]$ oc create -f 99-zcustom-chrony.yml
+machineconfig.machineconfiguration.openshift.io/99-zcustom-chrony created
+[student@workstation nodes-mco]$ oc get mc
+NAME                                               GENERATEDBYCONTROLLER                      IGNITIONVERSION   AGE
+00-master                                          4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+00-worker                                          4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+01-master-container-runtime                        4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+01-master-kubelet                                  4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+01-worker-container-runtime                        4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+01-worker-kubelet                                  4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+97-master-generated-kubelet                        4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+97-worker-generated-kubelet                        4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+98-master-generated-kubelet                        4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+98-var-lib-etcd                                                                               3.2.0             420d
+98-worker-generated-kubelet                        4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+99-infra-chrony-conf-override                                                                 3.2.0             420d
+99-master-chrony-conf-override                                                                3.2.0             420d
+99-master-generated-registries                     4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+99-master-ssh                                                                                 3.2.0             420d
+99-worker-chrony-conf-override                                                                3.2.0             420d
+99-worker-generated-registries                     4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+99-worker-ssh                                                                                 3.2.0             420d
+99-zcustom-chrony                                                                             3.2.0             3s
+rendered-custom-f9d6dc8f628f90c934f06ffc3b917210   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             7m8s
+rendered-master-18a479596292970f10886b96cb5efacb   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             348d
+rendered-master-1dfd5e2737bf65976552c2bf52f69978   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+rendered-master-4c2d6883ab8824c78219fc95e204bc88   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+rendered-master-6604662db16e6acf3e536ff168b9ca9a   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+rendered-master-6a097c59c9dc8c50d6d219005d229892   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+rendered-master-78c8d100fc0220c51b97690bb7013c5a   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+rendered-master-a055c74b06774a0e9b231dbe11d43e06   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+rendered-master-b85f3f6faac41688f1d897f54d18a9be   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+rendered-master-d43dca52d4ad52fa14aaf3eb2fa799f9   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             348d
+rendered-worker-1bfe181f41021d64c1715519c461c69f   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+rendered-worker-2241705007a7b63ebc2d6f684b6bb4db   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+rendered-worker-30f7bff7b3e628d1ee5b3163c3943a23   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+rendered-worker-42d949d586fc6e308bc9ca792aa69c83   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+rendered-worker-5127ec2581afde3745ff4191a49f5cb3   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             348d
+rendered-worker-5f66ff360c0739a46b6a7eb9558abe2c   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             420d
+rendered-worker-f9d6dc8f628f90c934f06ffc3b917210   4f0f7a14c63e3cf9bd349f3230bc860af0be3db7   3.4.0             348d
+[student@workstation nodes-mco]$ oc get mcp
+NAME     CONFIG                                             UPDATED   UPDATING   DEGRADED   MACHINECOUNT   READYMACHINECOUNT   UPDATEDMACHINECOUNT   DEGRADEDMACHINECOUNT   AGE
+custom   rendered-custom-f9d6dc8f628f90c934f06ffc3b917210   False     True       False      1              0                   0                     0                      7m33s
+master   rendered-master-d43dca52d4ad52fa14aaf3eb2fa799f9   True      False      False      3              3                   3                     0                      420d
+worker   rendered-worker-f9d6dc8f628f90c934f06ffc3b917210   True      False      False      2              2                   2                     0                      420d
+[student@workstation nodes-mco]$
+
+student@workstation nodes-mco]$ oc get mcp
+NAME     CONFIG                                             UPDATED   UPDATING   DEGRADED   MACHINECOUNT   READYMACHINECOUNT   UPDATEDMACHINECOUNT   DEGRADEDMACHINECOUNT   AGE
+custom   rendered-custom-8225ac80add86ec351499462b806b73a   True      False      False      1              1                   1                     0                      10m
+master   rendered-master-d43dca52d4ad52fa14aaf3eb2fa799f9   True      False      False      3              3                   3                     0                      420d
+worker   rendered-worker-f9d6dc8f628f90c934f06ffc3b917210   True      False      False      2              2                   2                     0                      420d
+[student@workstation nodes-mco]$ 
+
+
+[student@workstation nodes-mco]$ oc debug node/worker01
+Temporary namespace openshift-debug-qlk54 is created for debugging node...
+Starting pod/worker01-debug-2r265 ...
+To use host binaries, run `chroot /host`
+
+Pod IP: 192.168.50.13
+If you don't see a command prompt, try pressing enter.
+sh-4.4# 
+sh-4.4# chroot /host
+sh-5.1# cat /etc/chrony.conf 
+pool 0.rhel.pool.ntp.org iburst
+driftfile /var/lib/chrony/drift
+makestep 1.0 3
+rtcsync
+logdir /var/log/chrony
+sh-5.1# 
+
+
+modified /etc/chrony.conf
+
+h-5.1# vi /etc/chrony.conf 
+sh-5.1# 
+sh-5.1# 
+sh-5.1# 
+sh-5.1# exit
+exit
+sh-4.4# exit
+exit
+
+Removing debug pod ...
+Temporary namespace openshift-debug-qlk54 was removed.
+[student@workstation nodes-mco]$ oc get mcp
+NAME     CONFIG                                             UPDATED   UPDATING   DEGRADED   MACHINECOUNT   READYMACHINECOUNT   UPDATEDMACHINECOUNT   DEGRADEDMACHINECOUNT   AGE
+custom   rendered-custom-8225ac80add86ec351499462b806b73a   False     True       True       1              0                   0                     1                      12m
+master   rendered-master-d43dca52d4ad52fa14aaf3eb2fa799f9   True      False      False      3              3                   3                     0                      420d
+worker   rendered-worker-f9d6dc8f628f90c934f06ffc3b917210   True      False      False      2              2                   2                     0                      420d
+[student@workstation nodes-mco]$ 
+
+
+oc describe mcp custom
+
+ Last Transition Time:  2025-04-30T07:44:56Z
+    Message:               Node worker01 is reporting: "unexpected on-disk state validating against rendered-custom-8225ac80add86ec351499462b806b73a: content mismatch for file \"/etc/chrony.conf\""
+    Reason:                1 nodes are reporting degraded status on sync
+    Status:                True
+    Type:                  NodeDegraded
+    Last Transition Time:  2025-04-30T07:44:56Z
+
+
+[student@workstation nodes-mco]$ oc get pod -n openshift-machine-config-operator -owide |grep worker01
+machine-config-daemon-2nvj4                  2/2     Running   6          348d   192.168.50.13   worker01   <none>           <none>
+[student@workstation nodes-mco]$ oc logs machine-config-daemon-2nvj4 -n openshift-machine-config-operator
+
+
+E0430 07:44:50.986827    2447 on_disk_validation.go:237] content mismatch for file "/etc/chrony.conf" (-want +got):
+  bytes.Join({
+  	"pool ",
+- 	"0",
++ 	"1",
+  	".rhel.pool.ntp.org iburst\ndriftfile /var/lib/chrony/drift\nmakest",
+  	"ep 1.0 3\nrtcsync\nlogdir /var/log/chrony\n",
+  }, "")
+
+
+h-5.1# vi /etc/chrony.conf 
+sh-5.1# cat /etc/chrony.conf 
+pool 0.rhel.pool.ntp.org iburst
+driftfile /var/lib/chrony/drift
+makestep 1.0 3
+rtcsync
+logdir /var/log/chrony
+sh-5.1# 
+
+
+[student@workstation nodes-mco]$ oc get mcp
+NAME     CONFIG                                             UPDATED   UPDATING   DEGRADED   MACHINECOUNT   READYMACHINECOUNT   UPDATEDMACHINECOUNT   DEGRADEDMACHINECOUNT   AGE
+custom   rendered-custom-8225ac80add86ec351499462b806b73a   True      False      False      1              1                   1                     0                      20m
+master   rendered-master-d43dca52d4ad52fa14aaf3eb2fa799f9   True      False      False      3              3                   3                     0                      420d
+worker   rendered-worker-f9d6dc8f628f90c934f06ffc3b917210   True      False      False      2              2                   2                     0                      420d
+[student@workstation nodes-mco]$ 
+
+
+
+
+
