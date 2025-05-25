@@ -1,0 +1,35 @@
+AUTH-TLS
+
+[student@workstation certificate]$ ls
+admin-access.crt  ocp-apiserver-cert.crt  tls.key
+[student@workstation certificate]$ 
+
+Usage:
+  oc config set-credentials NAME [--client-certificate=path/to/certfile] [--client-key=path/to/keyfile]
+[--token=bearer_token] [--username=basic_user] [--password=basic_password] [--auth-provider=provider_name]
+[--auth-provider-arg=key=value] [--exec-command=exec_command] [--exec-api-version=exec_api_version] [--exec-arg=arg]
+[--exec-env=key=value] [options]
+
+Use "oc options" for a list of global command-line options (applies to all commands).
+[student@workstation certificate]$
+
+student@workstation certificate]$ ls
+admin-access.crt  ocp-apiserver-cert.crt  tls.key
+[student@workstation certificate]$ oc config set-credentials admin --client-certificate=admin-access.crt --client-key=tls.key --embed-certs --kubeconfig admin.config
+User "admin" set.
+
+[student@workstation certificate]$ oc config set-cluster api-ocp4-example-com:6443 --server https://api.ocp4.example.com:6443 --certificate-authority ocp-apiserver-cert.crt --embed-certs --kubeconfig admin.config 
+Cluster "api-ocp4-example-com:6443" set.
+
+[student@workstation certificate]$ oc config set-context admin --cluster api-ocp4-example-com:6443 --user admin --kubeconfig admin.config 
+Context "admin" created.
+[student@workstation certificate]$ 
+
+[student@workstation certificate]$ oc config use-context admin --kubeconfig admin.config 
+Switched to context "admin".
+[student@workstation certificate]$ oc whoami --kubeconfig admin.config 
+system:admin
+[student@workstation certificate]$ oc whoami --kubeconfig admin.config 
+
+
+
